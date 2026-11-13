@@ -10,7 +10,7 @@ Eine `.ipa` ist das Installationspaket einer iOS-App. Bauen lässt sie sich nur 
    ```
    Falls nicht: `sudo xcode-select -s /Applications/Xcode.app`.
 2. **Node.js 24** installieren, z. B. über den Installer von nodejs.org.
-3. Den Projektordner `inknotes` auf den Mac bringen (Git-Clone, USB-Stick oder Cloud) und darin einmal `npm ci` ausführen.
+3. Den Projektordner `kladde` auf den Mac bringen (Git-Clone, USB-Stick oder Cloud) und darin einmal `npm ci` ausführen.
 
 ## Weg A: Unsignierte .ipa (ohne Apple-Entwicklerkonto)
 
@@ -18,7 +18,7 @@ Eine `.ipa` ist das Installationspaket einer iOS-App. Bauen lässt sie sich nur 
 npm run ios:ipa
 ```
 
-Ergebnis: `release/Inknotes-<version>-unsigned.ipa`.
+Ergebnis: `release/Kladde-<version>-unsigned.ipa`.
 
 Diese Datei läuft nicht direkt auf dem iPad, weil iOS nur signierte Apps startet. [Sideloadly](https://sideloadly.io) oder [AltStore](https://altstore.io) signieren sie beim Installieren mit deiner normalen Apple-ID:
 
@@ -47,7 +47,7 @@ Bequemer ist eine AltStore-Quelle: Dann installiert und aktualisiert AltStore di
    TEAM_ID=ABCDE12345 npm run ios:ipa
    ```
 
-Ergebnis: `release/Inknotes-<version>.ipa`. Installieren über den Finder (iPad in der Seitenleiste wählen, `.ipa` in das Fenster ziehen) oder in Xcode über **Devices and Simulators → +**.
+Ergebnis: `release/Kladde-<version>.ipa`. Installieren über den Finder (iPad in der Seitenleiste wählen, `.ipa` in das Fenster ziehen) oder in Xcode über **Devices and Simulators → +**.
 
 | Konto | `METHOD` | Was entsteht |
 | --- | --- | --- |
@@ -56,10 +56,10 @@ Ergebnis: `release/Inknotes-<version>.ipa`. Installieren über den Finder (iPad 
 | Apple Developer Program | `release-testing` | Ad-hoc-Verteilung an registrierte Geräte |
 | Apple Developer Program | `app-store-connect` | Upload zu TestFlight oder in den App Store |
 
-Meldet Xcode, die Bundle-ID `org.inknotes.app` sei vergeben, eine eigene wählen:
+Meldet Xcode, die Bundle-ID `io.github.creality1d.kladde` sei vergeben, eine eigene wählen:
 
 ```sh
-TEAM_ID=ABCDE12345 BUNDLE_ID=de.deinname.inknotes npm run ios:ipa
+TEAM_ID=ABCDE12345 BUNDLE_ID=de.deinname.kladde npm run ios:ipa
 ```
 
 Das Skript trägt sie dann ins Xcode-Projekt ein (eine lokale Änderung an `ios/App/App.xcodeproj/project.pbxproj`, die du committen oder verwerfen kannst).
@@ -74,7 +74,7 @@ Das Skript übernimmt die Version aus `package.json` (`CFBundleShortVersionStrin
 
 ## Häufige Fehler
 
-- **„No Account for Team“ / „No profiles for 'org.inknotes.app' were found“:** Apple-ID fehlt in Xcode (Schritt B1) oder das iPad ist nicht registriert (Schritt B3).
+- **„No Account for Team“ / „No profiles for 'io.github.creality1d.kladde' were found“:** Apple-ID fehlt in Xcode (Schritt B1) oder das iPad ist nicht registriert (Schritt B3).
 - **„xcodebuild requires Xcode“:** `sudo xcode-select -s /Applications/Xcode.app`.
 - **Paket `capacitor-swift-pm` lässt sich nicht laden:** Xcode lädt Capacitor beim ersten Build von GitHub; dafür braucht der Mac Internet.
 - **App startet auf dem iPad nicht („Nicht vertrauenswürdiger Entwickler“):** Schritt A3 und A4.

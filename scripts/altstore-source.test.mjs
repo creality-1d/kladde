@@ -3,8 +3,8 @@ import { buildSource } from "./altstore-source.mjs";
 
 const meta = (version, build) => ({
   info: {
-    CFBundleIdentifier: "org.inknotes.app",
-    CFBundleDisplayName: "Inknotes",
+    CFBundleIdentifier: "io.github.creality1d.kladde",
+    CFBundleDisplayName: "Kladde",
     CFBundleShortVersionString: version,
     CFBundleVersion: build,
     MinimumOSVersion: "16.4",
@@ -20,7 +20,7 @@ describe("AltStore source", () => {
   it("describes the built app with its exact version, build and permissions", () => {
     const source = buildSource({ meta: meta("0.1.0", "9"), downloadURL: "https://x/a.ipa", date: "2026-11-13", notes: "Erste Version", ...urls });
     const app = source.apps[0];
-    expect(app).toMatchObject({ name: "Inknotes", bundleIdentifier: "org.inknotes.app", appPermissions: { entitlements: [], privacy: { NSCameraUsageDescription: "Fotos aufnehmen" } } });
+    expect(app).toMatchObject({ name: "Kladde", bundleIdentifier: "io.github.creality1d.kladde", appPermissions: { entitlements: [], privacy: { NSCameraUsageDescription: "Fotos aufnehmen" } } });
     expect(app.versions).toEqual([
       { version: "0.1.0", buildVersion: "9", date: "2026-11-13", localizedDescription: "Erste Version", downloadURL: "https://x/a.ipa", size: 1234, sha256: "ab".repeat(32), minOSVersion: "16.4" },
     ]);

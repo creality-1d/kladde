@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# Builds an Inknotes .ipa on a Mac. See docs/ios-ipa.md.
+# Builds an Kladde .ipa on a Mac. See docs/ios-ipa.md.
 #
 #   npm run ios:ipa                          unsigned .ipa; Sideloadly or AltStore sign it with your Apple ID
 #   TEAM_ID=ABCDE12345 npm run ios:ipa       signed by Xcode with your Apple ID or developer team
 #
 # Optional:
 #   METHOD=debugging|release-testing|app-store-connect   export method for signed builds (default debugging)
-#   BUNDLE_ID=de.example.inknotes            bundle id if org.inknotes.app is taken for your team
+#   BUNDLE_ID=de.example.kladde            bundle id if io.github.creality1d.kladde is taken for your team
 #   BUILD_NUMBER=42                          CFBundleVersion (default: number of git commits)
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -55,7 +55,7 @@ if [[ -z "${TEAM_ID:-}" ]]; then
   rm -rf "$WORK/Payload"
   mkdir "$WORK/Payload"
   cp -R "$WORK/derived/Build/Products/Release-iphoneos/App.app" "$WORK/Payload/"
-  IPA="release/Inknotes-$VERSION-unsigned.ipa"
+  IPA="release/Kladde-$VERSION-unsigned.ipa"
   rm -f "$IPA"
   (cd "$WORK" && zip -qry "../$(basename "$IPA")" Payload)
   write_metadata "$WORK/Payload/App.app" "$IPA"
@@ -65,7 +65,7 @@ if [[ -z "${TEAM_ID:-}" ]]; then
 fi
 
 METHOD=${METHOD:-debugging}
-ARCHIVE="$WORK/Inknotes.xcarchive"
+ARCHIVE="$WORK/Kladde.xcarchive"
 echo "Baue signierte .ipa für Team $TEAM_ID (Methode $METHOD) …"
 rm -rf "$ARCHIVE" "$WORK/export"
 xcodebuild -project "$PROJECT" -scheme App -configuration Release -destination generic/platform=iOS \
@@ -87,7 +87,7 @@ PLIST
 
 xcodebuild -exportArchive -archivePath "$ARCHIVE" -exportPath "$WORK/export" \
   -exportOptionsPlist "$WORK/ExportOptions.plist" -allowProvisioningUpdates
-IPA="release/Inknotes-$VERSION.ipa"
+IPA="release/Kladde-$VERSION.ipa"
 cp "$WORK/export/"*.ipa "$IPA"
 write_metadata "$ARCHIVE/Products/Applications/App.app" "$IPA"
 echo "Fertig: $IPA"

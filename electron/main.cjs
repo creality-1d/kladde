@@ -20,7 +20,7 @@ function serveApp() {
   });
 }
 
-ipcMain.handle("inknotes:fetch", async (_event, url, init) => {
+ipcMain.handle("kladde:fetch", async (_event, url, init) => {
   const { protocol: scheme } = new URL(url);
   if (scheme !== "https:" && scheme !== "http:") throw new Error(`unsupported URL scheme ${scheme}`);
   const response = await net.fetch(url, { method: init.method, headers: init.headers, body: init.body });
@@ -36,7 +36,7 @@ function createWindow() {
   const window = new BrowserWindow({
     width: 1280,
     height: 900,
-    title: "Inknotes",
+    title: "Kladde",
     webPreferences: { preload: path.join(__dirname, "preload.cjs"), contextIsolation: true, sandbox: true },
   });
   // Links leave the app in the system browser.
@@ -44,7 +44,7 @@ function createWindow() {
     void shell.openExternal(url);
     return { action: "deny" };
   });
-  void window.loadURL("app://inknotes/index.html");
+  void window.loadURL("app://kladde/index.html");
 }
 
 app.whenReady().then(() => {

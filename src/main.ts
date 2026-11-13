@@ -229,7 +229,7 @@ const touches = new Map<number, { x: number; y: number }>();
 let pinch: { distance: number; zoom: number; mid: { x: number; y: number } } | undefined;
 let panFrom: { x: number; y: number } | undefined;
 let resizeFrom: { origin: { x: number; y: number }; distance: number } | undefined;
-const PEN_KEY = "inknotes.penSeen";
+const PEN_KEY = "kladde.penSeen";
 // Once a stylus has written, one finger scrolls instead of drawing.
 let penSeen = (() => {
   try {
@@ -620,7 +620,7 @@ $<HTMLInputElement>("import-file").onchange = async (event) => {
   input.value = "";
 };
 
-const ACCOUNT_KEY = "inknotes.nextcloud";
+const ACCOUNT_KEY = "kladde.nextcloud";
 function loadAccount(): NextcloudAccount | undefined {
   try {
     const raw = localStorage.getItem(ACCOUNT_KEY);

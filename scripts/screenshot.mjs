@@ -7,7 +7,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 const [browser, url, out, width = "700", height = "1000"] = process.argv.slice(2);
-const profile = mkdtempSync(join(tmpdir(), "inknotes-shot-"));
+const profile = mkdtempSync(join(tmpdir(), "kladde-shot-"));
 const port = 9300 + Math.floor(Math.random() * 500);
 const child = spawn(browser, [`--headless=new`, `--disable-gpu`, `--remote-debugging-port=${port}`, `--user-data-dir=${profile}`, `--window-size=${width},${height}`, "about:blank"], { stdio: "ignore" });
 

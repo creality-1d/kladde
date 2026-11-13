@@ -1,6 +1,6 @@
 {
-  "appId": "org.inknotes.app",
-  "appName": "Inknotes",
+  "appId": "io.github.creality1d.kladde",
+  "appName": "Kladde",
   "webDir": "dist",
   "plugins": {
     "CapacitorHttp": { "enabled": true }

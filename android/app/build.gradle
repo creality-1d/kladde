@@ -1,10 +1,10 @@
 apply plugin: 'com.android.application'
 
 android {
-    namespace = "org.inknotes.app"
+    namespace = "io.github.creality1d.kladde"
     compileSdk = rootProject.ext.compileSdkVersion
     defaultConfig {
-        applicationId "org.inknotes.app"
+        applicationId "io.github.creality1d.kladde"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 1

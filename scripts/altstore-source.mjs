@@ -1,7 +1,7 @@
-// Builds the AltStore source (altstore.json) for an Inknotes release. See docs/altstore.md.
+// Builds the AltStore source (altstore.json) for an Kladde release. See docs/altstore.md.
 //
-//   node scripts/altstore-source.mjs --meta release/Inknotes-0.1.0-unsigned.ipa.json \
-//     --download-url https://…/Inknotes-0.1.0-unsigned.ipa --icon-url https://…/icon.png \
+//   node scripts/altstore-source.mjs --meta release/Kladde-0.1.0-unsigned.ipa.json \
+//     --download-url https://…/Kladde-0.1.0-unsigned.ipa --icon-url https://…/icon.png \
 //     --source-url https://…/altstore.json [--previous old-altstore.json] [--notes notes.txt] \
 //     [--date 2026-11-13] --out release/altstore.json
 //
@@ -10,7 +10,7 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
-const SOURCE_ID = "org.inknotes.source";
+const SOURCE_ID = "io.github.creality1d.kladde.source";
 const TINT = "#2a6fdb";
 const DESCRIPTION =
   "Handschriftliche Notizen mit Apple Pencil, synchronisiert über die eigene Nextcloud. " +
@@ -39,7 +39,7 @@ export function buildSource({ meta, downloadURL, iconURL, sourceURL, date, notes
     version: field("CFBundleShortVersionString"),
     buildVersion: field("CFBundleVersion"),
     date,
-    localizedDescription: notes?.trim() || `Inknotes ${field("CFBundleShortVersionString")}`,
+    localizedDescription: notes?.trim() || `Kladde ${field("CFBundleShortVersionString")}`,
     downloadURL,
     size: meta.size,
     sha256: meta.sha256,
@@ -50,7 +50,7 @@ export function buildSource({ meta, downloadURL, iconURL, sourceURL, date, notes
   const older = (previousApp?.versions ?? []).filter((v) => !(v.version === version.version && v.buildVersion === version.buildVersion));
   const privacy = Object.fromEntries(Object.entries(info).filter(([key, value]) => /^NS\w+UsageDescription$/.test(key) && typeof value === "string"));
   return {
-    name: "Inknotes",
+    name: "Kladde",
     identifier: SOURCE_ID,
     sourceURL,
     subtitle: "Handschriftliche Notizen mit Nextcloud-Sync",
@@ -61,7 +61,7 @@ export function buildSource({ meta, downloadURL, iconURL, sourceURL, date, notes
       {
         name: field("CFBundleDisplayName"),
         bundleIdentifier,
-        developerName: "Inknotes",
+        developerName: "Kladde",
         subtitle: "Notizen mit Apple Pencil und Nextcloud",
         localizedDescription: DESCRIPTION,
         iconURL,

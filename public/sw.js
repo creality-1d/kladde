@@ -1,6 +1,6 @@
 // Offline support for the installed web app (iPad, Android, desktop browsers).
 // Navigations go to the network first so updates arrive; hashed assets are cached.
-const CACHE = "inknotes-v1";
+const CACHE = "kladde-v1";
 
 self.addEventListener("install", (event) => {
   event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(["./", "./index.html", "./manifest.webmanifest"])));

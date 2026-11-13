@@ -32,7 +32,7 @@ jobs:
         env:
           BASE: https://github.com/${{ github.repository }}/releases
         run: |
-          ipa="Inknotes-$VERSION-unsigned.ipa"
+          ipa="Kladde-$VERSION-unsigned.ipa"
           cp public/icons/icon-512.png release/icon.png
           # Keep the versions of the release published so far.
           previous=()
@@ -50,7 +50,7 @@ jobs:
       - uses: softprops/action-gh-release@v2
         with:
           files: |
-            release/Inknotes-*-unsigned.ipa
+            release/Kladde-*-unsigned.ipa
             release/altstore.json
             release/icon.png
           body_path: release/notes.txt

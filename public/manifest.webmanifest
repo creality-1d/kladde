@@ -1,6 +1,6 @@
 {
-  "name": "Inknotes",
-  "short_name": "Inknotes",
+  "name": "Kladde",
+  "short_name": "Kladde",
   "description": "Handschriftliche Notizen mit Nextcloud-Sync und Goodnotes-Import",
   "lang": "de",
   "start_url": "./",

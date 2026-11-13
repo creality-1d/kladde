@@ -1,6 +1,6 @@
 # Goodnotes 6 archive format (`.goodnotes`)
 
-This describes what Inknotes reads from Goodnotes 6 exports. It was derived only
+This describes what Kladde reads from Goodnotes 6 exports. It was derived only
 from exported archives of the user's own documents, to make them importable
 (interoperability). No Goodnotes code is used or reproduced.
 

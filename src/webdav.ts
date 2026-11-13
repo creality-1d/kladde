@@ -27,7 +27,7 @@ interface NativeResponse {
 }
 declare global {
   interface Window {
-    inknotesNative?: { request(url: string, init: NativeRequest): Promise<NativeResponse> };
+    kladdeNative?: { request(url: string, init: NativeRequest): Promise<NativeResponse> };
   }
 }
 
@@ -36,7 +36,7 @@ declare global {
  * process; Capacitor patches fetch natively. Both avoid browser CORS rules.
  */
 const platformFetch: typeof fetch = async (input, init = {}) => {
-  const native = window.inknotesNative ?? capacitorBridge();
+  const native = window.kladdeNative ?? capacitorBridge();
   if (!native) return fetch(input, init);
   const body = typeof init.body === "string" || init.body instanceof Uint8Array ? init.body : undefined;
   const result = await native.request(String(input), {
@@ -56,7 +56,7 @@ const toBase64 = (bytes: Uint8Array) => btoa(Array.from(bytes, (b) => String.fro
 const fromBase64 = (text: string) => Uint8Array.from(atob(text), (c) => c.charCodeAt(0));
 
 /** Android: the WebDavHttp plugin (OkHttp), since Capacitor's own HTTP rejects WebDAV methods. */
-function capacitorBridge(): Window["inknotesNative"] {
+function capacitorBridge(): Window["kladdeNative"] {
   const plugin = (window as unknown as CapacitorWindow).Capacitor?.Plugins?.WebDavHttp;
   if (!plugin) return undefined;
   return {

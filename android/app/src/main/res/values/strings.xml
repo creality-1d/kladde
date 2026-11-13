@@ -1,7 +1,7 @@
 <?xml version='1.0' encoding='utf-8'?>
 <resources>
-    <string name="app_name">Inknotes</string>
-    <string name="title_activity_main">Inknotes</string>
-    <string name="package_name">org.inknotes.app</string>
-    <string name="custom_url_scheme">org.inknotes.app</string>
+    <string name="app_name">Kladde</string>
+    <string name="title_activity_main">Kladde</string>
+    <string name="package_name">io.github.creality1d.kladde</string>
+    <string name="custom_url_scheme">io.github.creality1d.kladde</string>
 </resources>

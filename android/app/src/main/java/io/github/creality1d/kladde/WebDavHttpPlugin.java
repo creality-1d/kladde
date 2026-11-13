@@ -1,4 +1,4 @@
-package org.inknotes.app;
+package io.github.creality1d.kladde;
 
 import android.util.Base64;
 import com.getcapacitor.JSArray;

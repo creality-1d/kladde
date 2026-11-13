@@ -3,6 +3,6 @@
 // page builds the Response.
 const { contextBridge, ipcRenderer } = require("electron");
 
-contextBridge.exposeInMainWorld("inknotesNative", {
-  request: (url, init) => ipcRenderer.invoke("inknotes:fetch", url, init),
+contextBridge.exposeInMainWorld("kladdeNative", {
+  request: (url, init) => ipcRenderer.invoke("kladde:fetch", url, init),
 });

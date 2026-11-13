@@ -15,7 +15,7 @@ export interface AttachmentStore {
   put(id: string, bytes: Uint8Array): Promise<unknown>;
 }
 
-const fileName = (id: string) => `${id}.inknote.json`;
+const fileName = (id: string) => `${id}.kladde.json`;
 const attachmentName = (id: string) => `${id}.attachment`;
 
 /**
@@ -25,7 +25,7 @@ const attachmentName = (id: string) => `${id}.attachment`;
 export async function syncNotebooks(local: Notebook[], remote: RemoteStore, attachments?: AttachmentStore): Promise<Notebook[]> {
   await remote.ensureFolder();
   const listed = await remote.list();
-  const remoteNames = new Set(listed.filter((name) => name.endsWith(".inknote.json")));
+  const remoteNames = new Set(listed.filter((name) => name.endsWith(".kladde.json")));
   const byId = new Map(local.map((notebook) => [notebook.id, notebook]));
 
   for (const name of remoteNames) {

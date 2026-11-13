@@ -1,6 +1,6 @@
 import type { Notebook } from "./model";
 
-const DB_NAME = "inknotes";
+const DB_NAME = "kladde";
 const STORE = "notebooks";
 const ATTACHMENTS = "attachments";
 

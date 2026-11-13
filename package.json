@@ -1,5 +1,5 @@
 {
-  "name": "inknotes",
+  "name": "kladde",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -36,8 +36,8 @@
   "author": "Ruben Hägele",
   "main": "electron/main.cjs",
   "build": {
-    "appId": "org.inknotes.app",
-    "productName": "Inknotes",
+    "appId": "io.github.creality1d.kladde",
+    "productName": "Kladde",
     "files": [
       "dist/**",
       "electron/**",
@@ -66,5 +66,5 @@
       "category": "public.app-category.productivity"
     }
   },
-  "desktopName": "inknotes.desktop"
+  "desktopName": "kladde.desktop"
 }

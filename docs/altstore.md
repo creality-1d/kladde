@@ -1,6 +1,6 @@
-# Inknotes über AltStore installieren und aktualisieren
+# Kladde über AltStore installieren und aktualisieren
 
-AltStore installiert Apps außerhalb des App Stores und signiert sie mit deiner Apple-ID. Inknotes veröffentlicht dafür eine **AltStore-Quelle**: eine Datei `altstore.json`, die AltStore liest, um die App zu finden, herunterzuladen und über neue Versionen zu informieren. SideStore liest das gleiche Format.
+AltStore installiert Apps außerhalb des App Stores und signiert sie mit deiner Apple-ID. Kladde veröffentlicht dafür eine **AltStore-Quelle**: eine Datei `altstore.json`, die AltStore liest, um die App zu finden, herunterzuladen und über neue Versionen zu informieren. SideStore liest das gleiche Format.
 
 ## So entsteht eine Quelle
 
@@ -38,11 +38,11 @@ Einmalig:
 2. iPad per Kabel verbinden, im AltServer-Menü (Taskleiste bzw. Menüleiste) **Install AltStore → iPad** wählen und mit der Apple-ID anmelden.
 3. Auf dem iPad: **Einstellungen → Allgemein → VPN & Geräteverwaltung**, dem Zertifikat deiner Apple-ID vertrauen. Ab iPadOS 16 zusätzlich **Einstellungen → Datenschutz & Sicherheit → Entwicklermodus** einschalten.
 
-Inknotes hinzufügen:
+Kladde hinzufügen:
 
 1. AltStore öffnen, **Quellen** (Sources) → **+**.
 2. Die Adresse der Quelle eintragen (siehe oben), bestätigen.
-3. Inknotes in der Quelle öffnen, **Free** bzw. **Installieren** tippen.
+3. Kladde in der Quelle öffnen, **Free** bzw. **Installieren** tippen.
 
 ## Was du wissen musst
 
@@ -52,8 +52,8 @@ Inknotes hinzufügen:
 - **Mindestens iPadOS 16.4**, weil der PDF-Renderer neuere Safari-Funktionen braucht. AltStore lehnt ältere Geräte direkt ab.
 - **Ohne GitHub:** Jeder HTTPS-Server geht, auch ein öffentlich geteilter Nextcloud-Ordner. Auf einem Mac `npm run ios:ipa` ausführen, `.ipa` und `icon.png` hochladen und die Quelle mit deren öffentlichen Adressen erzeugen:
   ```sh
-  node scripts/altstore-source.mjs --meta release/Inknotes-0.2.0-unsigned.ipa.json \
-    --download-url https://…/Inknotes-0.2.0-unsigned.ipa --icon-url https://…/icon.png \
+  node scripts/altstore-source.mjs --meta release/Kladde-0.2.0-unsigned.ipa.json \
+    --download-url https://…/Kladde-0.2.0-unsigned.ipa --icon-url https://…/icon.png \
     --source-url https://…/altstore.json --previous altstore.json --out altstore.json
   ```
   `--previous` beim ersten Mal weglassen. Danach `altstore.json` hochladen und deren Adresse in AltStore eintragen.

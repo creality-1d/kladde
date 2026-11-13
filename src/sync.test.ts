@@ -79,7 +79,7 @@ describe("mergeBack", () => {
   it("keeps edits and notebooks made while a sync ran", async () => {
     const remote = new MemoryRemote();
     const other = newNotebook("Remote", 1);
-    remote.files.set(`${other.id}.inknote.json`, JSON.stringify(other));
+    remote.files.set(`${other.id}.kladde.json`, JSON.stringify(other));
     const nb = newNotebook("Live", 1);
     const live = [nb];
     const running = syncNotebooks(structuredClone(live), remote);
