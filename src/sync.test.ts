@@ -6,9 +6,16 @@ const clone = (nb: Notebook): Notebook => structuredClone(nb);
 
 class MemoryRemote implements RemoteStore {
   files = new Map<string, string>();
+  blobs = new Map<string, Uint8Array>();
+  async getBinary(name: string) {
+    return this.blobs.get(name)!;
+  }
+  async putBinary(name: string, body: Uint8Array) {
+    this.blobs.set(name, body);
+  }
   async ensureFolder() {}
   async list() {
-    return [...this.files.keys()];
+    return [...this.files.keys(), ...this.blobs.keys()];
   }
   async get(name: string) {
     return this.files.get(name)!;
@@ -53,5 +60,17 @@ describe("syncNotebooks", () => {
     expect(onB.map((nb) => nb.title).sort()).toEqual(["Privat", "Uni"]);
     expect(onA.map((nb) => nb.title).sort()).toEqual(["Privat", "Uni"]);
     expect(remote.files.size).toBe(2);
+  });
+
+  it("copies PDF attachments to devices that lack them", async () => {
+    const remote = new MemoryRemote();
+    const nb = newNotebook("PDF", 1);
+    nb.pages[0].background = { attachment: "pdf-1", page: 0 };
+    const tablet = new Map([["pdf-1", new Uint8Array([37, 80, 68, 70])]]);
+    const laptop = new Map<string, Uint8Array>();
+    const store = (m: Map<string, Uint8Array>) => ({ get: async (id: string) => m.get(id), put: async (id: string, b: Uint8Array) => m.set(id, b) });
+    await syncNotebooks([nb], remote, store(tablet));
+    await syncNotebooks([], remote, store(laptop));
+    expect([...(laptop.get("pdf-1") ?? [])]).toEqual([37, 80, 68, 70]);
   });
 });

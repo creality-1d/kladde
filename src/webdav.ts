@@ -55,7 +55,7 @@ export class WebDav {
     const xml = new DOMParser().parseFromString(await response.text(), "application/xml");
     return Array.from(xml.getElementsByTagNameNS("DAV:", "href"))
       .map((href) => decodeURIComponent(href.textContent ?? "").split("/").pop() ?? "")
-      .filter((name) => name.endsWith(".inknote.json"));
+      .filter(Boolean);
   }
 
   async get(name: string): Promise<string> {
@@ -64,5 +64,13 @@ export class WebDav {
 
   async put(name: string, body: string): Promise<void> {
     await this.request("PUT", name, { body, headers: { "Content-Type": "application/json" } });
+  }
+
+  async getBinary(name: string): Promise<Uint8Array> {
+    return new Uint8Array(await (await this.request("GET", name)).arrayBuffer());
+  }
+
+  async putBinary(name: string, body: Uint8Array): Promise<void> {
+    await this.request("PUT", name, { body: body.slice(), headers: { "Content-Type": "application/octet-stream" } });
   }
 }

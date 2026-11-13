@@ -302,7 +302,10 @@ $("sync").onclick = async () => {
   if (!account) return $("settings").click();
   status.textContent = "Synchronisiere …";
   try {
-    notebooks = await syncNotebooks(notebooks, new WebDav(account));
+    notebooks = await syncNotebooks(notebooks, new WebDav(account), {
+      get: (id) => storage.getAttachment(id),
+      put: (id, bytes) => storage.putAttachment(id, bytes),
+    });
     await Promise.all(notebooks.map((nb) => storage.put(nb)));
     current = notebooks.find((nb) => nb.id === current?.id) ?? current;
     status.textContent = `Synchronisiert: ${new Date().toLocaleTimeString()}`;
