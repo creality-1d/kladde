@@ -1,0 +1,8 @@
+{
+  "appId": "org.inknotes.app",
+  "appName": "Inknotes",
+  "webDir": "dist",
+  "plugins": {
+    "CapacitorHttp": { "enabled": true }
+  }
+}

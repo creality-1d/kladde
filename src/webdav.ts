@@ -36,7 +36,7 @@ declare global {
  * process; Capacitor patches fetch natively. Both avoid browser CORS rules.
  */
 const platformFetch: typeof fetch = async (input, init = {}) => {
-  const native = window.inknotesNative;
+  const native = window.inknotesNative ?? capacitorBridge();
   if (!native) return fetch(input, init);
   const body = typeof init.body === "string" || init.body instanceof Uint8Array ? init.body : undefined;
   const result = await native.request(String(input), {
@@ -47,6 +47,26 @@ const platformFetch: typeof fetch = async (input, init = {}) => {
   const empty = result.status === 204 || result.status === 304 || result.status === 201 && result.body.length === 0;
   return new Response(empty ? null : result.body, { status: result.status, statusText: result.statusText, headers: result.headers });
 };
+
+interface CapacitorWindow {
+  Capacitor?: { Plugins?: { WebDavHttp?: { request(options: object): Promise<NativeResponse & { bodyBase64: string }> } } };
+}
+
+const toBase64 = (bytes: Uint8Array) => btoa(Array.from(bytes, (b) => String.fromCharCode(b)).join(""));
+const fromBase64 = (text: string) => Uint8Array.from(atob(text), (c) => c.charCodeAt(0));
+
+/** Android: the WebDavHttp plugin (OkHttp), since Capacitor's own HTTP rejects WebDAV methods. */
+function capacitorBridge(): Window["inknotesNative"] {
+  const plugin = (window as unknown as CapacitorWindow).Capacitor?.Plugins?.WebDavHttp;
+  if (!plugin) return undefined;
+  return {
+    async request(url, init) {
+      const body = typeof init.body === "string" ? new TextEncoder().encode(init.body) : init.body;
+      const result = await plugin.request({ url, method: init.method, headers: init.headers, bodyBase64: body && toBase64(body) });
+      return { ...result, body: fromBase64(result.bodyBase64) };
+    },
+  };
+}
 
 /** Minimal WebDAV client for the Nextcloud files endpoint. */
 export class WebDav {
