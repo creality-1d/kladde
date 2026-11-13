@@ -118,6 +118,9 @@ function hex(rgba: Field[]): string {
   return `#${c(1)}${c(2)}${c(3)}`;
 }
 
+/** Wrapping width for auto-sized boxes: wide enough that only newlines break lines. */
+const AUTO_WIDTH = 100_000;
+
 /** Kind 21: a positioned text box whose runs are LZ4-compressed protobuf. */
 export function freeText(body: Field[]): FreeText | undefined {
   const origin = pick.message(pick.message(body, 20) ?? [], 1);
@@ -127,17 +130,23 @@ export function freeText(body: Field[]): FreeText | undefined {
   const runs = fields(appleLz4(blob))
     .filter((x) => x.f === 1 && x.wt === 2)
     .map((x) => fields(x.v as Uint8Array));
-  const box = pick.message(content, 2);
   const style = pick.message(pick.message(content, 5) ?? [], 1);
   // Run attributes: field 3 colour (RGBA floats), field 40 size; −404 means "inherit".
   const attributes = pick.message(runs[0] ?? [], 2) ?? [];
   const runSize = pick.number(attributes, 40);
   const styleSize = style && pick.number(style, 40);
   const rgba = pick.message(attributes, 3);
+  // Field 10: text container insets; all four were 10 in the samples, so their order is unknown.
+  const insets = pick.message(content, 10) ?? [];
+  const inset = pick.number(insets, 1) ?? 0;
+  // Field 21 sizing: {2: {1: width}} is a fixed width including insets; {3: …}
+  // grows with its text, so it only breaks at explicit newlines.
+  const sizing = pick.message(body, 21) ?? [];
+  const fixed = pick.number(pick.message(sizing, 2) ?? [], 1);
   return {
-    x: pick.number(origin, 1) ?? 0,
-    y: pick.number(origin, 2) ?? 0,
-    width: (box && pick.number(box, 1)) ?? 400,
+    x: (pick.number(origin, 1) ?? 0) + inset,
+    y: (pick.number(origin, 2) ?? 0) + inset,
+    width: fixed !== undefined ? fixed - 2 * inset : AUTO_WIDTH,
     text: runs.map((run) => pick.string(run, 1) ?? "").join(""),
     fontSize: runSize && runSize > 0 ? runSize : styleSize && styleSize > 0 ? styleSize : 24,
     color: rgba ? hex(rgba) : "#000000",

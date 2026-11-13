@@ -60,7 +60,7 @@ describe("RTF paragraphs", () => {
   });
 });
 
-// Real archives are not part of the repository. Point GOODNOTES_SAMPLES at a
+// Real archives are not part of the repository. Point GOODNOTES_SAMPLES (e.g. test-samples) at a
 // folder of .goodnotes files to run the importer against them.
 const samples = process.env.GOODNOTES_SAMPLES;
 describe.skipIf(!samples || !existsSync(samples))("sample archives", () => {

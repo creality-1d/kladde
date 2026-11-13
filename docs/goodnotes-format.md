@@ -81,9 +81,11 @@ always as `vuA(v)A(S(uu))A(S(uuuu))vA(f)`:
 the top of the page; RTF `\fs` half-points equal page units. The importer
 approximates the flow insets (left 117, right 44, top 50 units) from thumbnails.
 
-**Kind 21 – text box.** 20.1 origin `{1 x, 2 y}`, 32.2 size `{1 w, 2 h}`,
-32.5.1.40 default size, 32.1.2 LZ4 payload of runs `{1: text, 2: attributes}`,
-attributes 3 colour and 40 size (−404 = inherit).
+**Kind 21 – text box.** 20.1 origin `{1 x, 2 y}`; 21 sizing: `{2: {1: width}}`
+fixed width including insets, `{3: …}` grows with its text; 32.2 laid-out text size
+`{1 w, 2 h}`; 32.10 insets (all 10 in the samples, order unknown); 32.5.1.40 default
+size; 32.1.2 LZ4 payload of runs `{1: text, 2: attributes}`, attributes 3 colour and
+40 size (−404 = inherit).
 
 ## Known gaps
 

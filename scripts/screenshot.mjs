@@ -34,6 +34,8 @@ try {
   const call = (method, params = {}) => new Promise((r) => { const n = ++id; pending.set(n, r); ws.send(JSON.stringify({ id: n, method, params })); });
   await call("Runtime.enable");
   await call("Emulation.setDeviceMetricsOverride", { width: Number(width), height: Number(height), deviceScaleFactor: 1, mobile: false });
+  // Transparent where the page paints nothing (e.g. icon corners).
+  await call("Emulation.setDefaultBackgroundColorOverride", { color: { r: 0, g: 0, b: 0, a: 0 } });
   await call("Page.navigate", { url });
   let title = "";
   for (let i = 0; i < 100; i++) {

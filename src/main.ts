@@ -315,6 +315,11 @@ $("sync").onclick = async () => {
   render();
 };
 
+// Installed web app only; the Electron and Capacitor shells ship their files.
+if ("serviceWorker" in navigator && location.protocol === "https:" && !("Capacitor" in window)) {
+  void navigator.serviceWorker.register("./sw.js");
+}
+
 void (async () => {
   notebooks = await storage.all();
   if (notebooks.length === 0) {

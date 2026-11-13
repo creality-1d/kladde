@@ -56,9 +56,7 @@
         "AppImage",
         "tar.gz"
       ],
-      "category": "Office",
-      "desktopName": "inknotes.desktop",
-      "syncDesktopName": true
+      "category": "Office"
     },
     "mac": {
       "target": [
@@ -66,5 +64,6 @@
       ],
       "category": "public.app-category.productivity"
     }
-  }
+  },
+  "desktopName": "inknotes.desktop"
 }
