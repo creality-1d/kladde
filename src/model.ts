@@ -1,4 +1,4 @@
-export type Tool = "pen" | "highlighter" | "eraser" | "text";
+export type Tool = "pen" | "highlighter" | "eraser" | "text" | "lasso" | "shape";
 export type Template = "blank" | "lined" | "grid" | "dotted";
 
 export interface Point {
@@ -28,6 +28,16 @@ export interface TextBox {
   bold?: boolean;
 }
 
+export interface PageImage {
+  id: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  /** Image bytes are stored and synced as an attachment. */
+  attachment: string;
+}
+
 export interface Page {
   id: string;
   template: Template;
@@ -38,6 +48,7 @@ export interface Page {
   width?: number;
   height?: number;
   texts?: TextBox[];
+  images?: PageImage[];
   /** Paragraphs laid out top to bottom from (x, y), as in a document page. */
   flow?: { x: number; y: number; width: number; paragraphs: { text: string; fontSize: number; bold: boolean }[] };
   /** A PDF page drawn under the ink, referenced by attachment id. */
@@ -47,6 +58,8 @@ export interface Page {
 export interface Notebook {
   id: string;
   title: string;
+  /** Folder path like "Uni/Physik"; empty for the top level. */
+  folder?: string;
   pages: Page[];
   updatedAt: number;
   deleted?: boolean;
@@ -94,4 +107,9 @@ export function mergeNotebook(local: Notebook, remote: Notebook): Notebook {
 
 export function visiblePages(notebook: Notebook): Page[] {
   return notebook.pages.filter((page) => !page.deleted);
+}
+
+/** Attachment ids a page depends on (PDF background and images). */
+export function pageAttachments(page: Page): string[] {
+  return [...(page.background ? [page.background.attachment] : []), ...(page.images ?? []).map((image) => image.attachment)];
 }

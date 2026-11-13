@@ -63,9 +63,22 @@ export function drawStroke(ctx: CanvasRenderingContext2D, stroke: Stroke): void 
   ctx.restore();
 }
 
-export function renderPage(ctx: CanvasRenderingContext2D, page: Page, background?: CanvasImageSource): void {
+export function renderPage(
+  ctx: CanvasRenderingContext2D,
+  page: Page,
+  background?: CanvasImageSource,
+  images?: ReadonlyMap<string, CanvasImageSource>,
+): void {
   drawTemplate(ctx, page.template);
   if (background) ctx.drawImage(background, 0, 0, ctx.canvas.width, ctx.canvas.height);
+  for (const image of page.images ?? []) {
+    const bitmap = images?.get(image.attachment);
+    if (bitmap) ctx.drawImage(bitmap, image.x, image.y, image.width, image.height);
+    else {
+      ctx.strokeStyle = "#9aa5b1";
+      ctx.strokeRect(image.x, image.y, image.width, image.height);
+    }
+  }
   if (page.flow) {
     let y = page.flow.y;
     for (const paragraph of page.flow.paragraphs) {

@@ -7,7 +7,12 @@ Inknotes ist eine eigenständige App. Sie enthält keinen Code und keine Gestalt
 ## Funktionen
 
 - Notizbücher mit Seitenvorlagen (liniert, kariert, gepunktet, blanko) und beliebigen Seitengrößen
-- Stift mit Druckempfindlichkeit (Apple Pencil, S Pen, Grafiktabletts), Textmarker, Radierer, Rückgängig
+- Stift mit Druckempfindlichkeit (Apple Pencil, S Pen, Grafiktabletts), Textmarker, Radierer
+- Form-Werkzeug: gezeichnete Linien, Rechtecke und Ellipsen werden begradigt
+- Lasso: Striche, Texte und Bilder auswählen, verschieben, löschen
+- Rückgängig/Wiederholen (Strg+Z / Strg+Y), Zoom (Knöpfe, Strg+Mausrad)
+- Bilder einfügen
+- Ordner und Suche (Titel, Ordner, getippter Text)
 - Handballenerkennung: Während der Stift schreibt, werden Fingerberührungen ignoriert
 - Textfelder
 - PDF als Seitenhintergrund (importierte Goodnotes-Arbeitsblätter, Papiervorlagen)
@@ -57,6 +62,6 @@ GOODNOTES_SAMPLES=test-samples npm test   # zusätzlich eigene .goodnotes-Dateie
 
 Ehrlich gesagt deckt Inknotes nicht alles ab, was Goodnotes 6 kann:
 
-- **Nicht vorhanden:** KI-Funktionen (Goodnotes nutzt dafür eigene Cloud-Modelle), Handschrifterkennung und Suche in Handschrift, Live-Zusammenarbeit, Marketplace, Audioaufnahmen, Lasso zum Verschieben, Formerkennung beim Zeichnen, Bilder/Sticker, Lesezeichen, Ordner, Präsentationsmodus.
+- **Nicht vorhanden:** KI-Funktionen (Goodnotes nutzt dafür eigene Cloud-Modelle), Handschrifterkennung und Suche in Handschrift, Live-Zusammenarbeit, Marketplace, Audioaufnahmen, Sticker, Lesezeichen, Präsentationsmodus, Größe ändern/Drehen von Auswahl, Pinch-Zoom.
 - **Goodnotes-Import:** Formatwechsel innerhalb eines Absatzes werden vereinfacht, Zeilenumbrüche können leicht abweichen; Bilder und andere Elementarten waren in den Beispieldateien nicht enthalten und werden noch nicht übernommen. Es gibt keinen Export zurück ins Goodnotes-Format.
 - **Sync:** manuell per Knopf; gleichzeitige Bearbeitung derselben Seite wird nicht zusammengeführt.
