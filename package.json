@@ -6,10 +6,16 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
-    "test": "vitest run"
+    "test": "vitest run",
+    "desktop": "vite build && electron .",
+    "dist:win": "vite build && electron-builder --win nsis portable",
+    "dist:linux": "vite build && electron-builder --linux AppImage tar.gz",
+    "dist:mac": "vite build && electron-builder --mac dmg"
   },
   "devDependencies": {
     "@types/node": "^24.10.1",
+    "electron": "^45.0.0",
+    "electron-builder": "^26.18.0",
     "typescript": "5.8.3",
     "vite": "6.3.5",
     "vitest": "3.2.4"
@@ -17,5 +23,44 @@
   "dependencies": {
     "fflate": "^0.8.2",
     "pdfjs-dist": "^4.10.38"
+  },
+  "allowScripts": {
+    "electron@45.0.0": true
+  },
+  "description": "Handwritten notes with Nextcloud sync and Goodnotes 6 import",
+  "author": "Ruben Hägele",
+  "main": "electron/main.cjs",
+  "build": {
+    "appId": "org.inknotes.app",
+    "productName": "Inknotes",
+    "files": [
+      "dist/**",
+      "electron/**",
+      "package.json"
+    ],
+    "directories": {
+      "output": "release"
+    },
+    "win": {
+      "target": [
+        "nsis",
+        "portable"
+      ]
+    },
+    "linux": {
+      "target": [
+        "AppImage",
+        "tar.gz"
+      ],
+      "category": "Office",
+      "desktopName": "inknotes.desktop",
+      "syncDesktopName": true
+    },
+    "mac": {
+      "target": [
+        "dmg"
+      ],
+      "category": "public.app-category.productivity"
+    }
   }
 }
