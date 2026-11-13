@@ -1,0 +1,97 @@
+export type Tool = "pen" | "highlighter" | "eraser" | "text";
+export type Template = "blank" | "lined" | "grid" | "dotted";
+
+export interface Point {
+  x: number;
+  y: number;
+  /** Stylus pressure in [0, 1]; 0.5 for devices that report none. */
+  p: number;
+}
+
+export interface Stroke {
+  id: string;
+  tool: "pen" | "highlighter";
+  color: string;
+  width: number;
+  points: Point[];
+}
+
+export interface TextBox {
+  id: string;
+  x: number;
+  y: number;
+  /** Wrapping width in page units. */
+  width: number;
+  text: string;
+  fontSize: number;
+  color: string;
+  bold?: boolean;
+}
+
+export interface Page {
+  id: string;
+  template: Template;
+  strokes: Stroke[];
+  updatedAt: number;
+  deleted?: boolean;
+  /** Page size in page units; defaults to PAGE_WIDTH × PAGE_HEIGHT. */
+  width?: number;
+  height?: number;
+  texts?: TextBox[];
+  /** Paragraphs laid out top to bottom from (x, y), as in a document page. */
+  flow?: { x: number; y: number; width: number; paragraphs: { text: string; fontSize: number; bold: boolean }[] };
+  /** A PDF page drawn under the ink, referenced by attachment id. */
+  background?: { attachment: string; page: number };
+}
+
+export interface Notebook {
+  id: string;
+  title: string;
+  pages: Page[];
+  updatedAt: number;
+  deleted?: boolean;
+}
+
+export const PAGE_WIDTH = 1404;
+export const PAGE_HEIGHT = 1872;
+
+export function newId(): string {
+  return crypto.randomUUID();
+}
+
+export function newPage(template: Template, now = Date.now()): Page {
+  return { id: newId(), template, strokes: [], updatedAt: now };
+}
+
+export function newNotebook(title: string, now = Date.now()): Notebook {
+  return { id: newId(), title, pages: [newPage("lined", now)], updatedAt: now };
+}
+
+function newer<T extends { updatedAt: number }>(a: T, b: T): T {
+  return b.updatedAt > a.updatedAt ? b : a;
+}
+
+/**
+ * Merges two replicas of one notebook. Pages merge independently by id with
+ * last-writer-wins, so edits to different pages on different devices both
+ * survive. Deleted pages stay as tombstones so deletions propagate.
+ */
+export function mergeNotebook(local: Notebook, remote: Notebook): Notebook {
+  const meta = newer(local, remote);
+  const order: string[] = [];
+  const pages = new Map<string, Page>();
+  for (const page of [...meta.pages, ...(meta === local ? remote : local).pages]) {
+    const seen = pages.get(page.id);
+    if (!seen) order.push(page.id);
+    pages.set(page.id, seen ? newer(seen, page) : page);
+  }
+  return {
+    ...meta,
+    updatedAt: Math.max(local.updatedAt, remote.updatedAt),
+    pages: order.map((id) => pages.get(id)!),
+  };
+}
+
+export function visiblePages(notebook: Notebook): Page[] {
+  return notebook.pages.filter((page) => !page.deleted);
+}

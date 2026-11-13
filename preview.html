@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="de">
+  <head><meta charset="utf-8" /><title>Import-Vorschau</title></head>
+  <body style="margin:0;background:#888">
+    <!-- Development aid: renders an imported .goodnotes file with the app's renderer. -->
+    <script type="module">
+      import { importGoodnotes } from "/src/goodnotes/import.ts";
+      import { renderPage } from "/src/ink.ts";
+      import { renderPdfPage } from "/src/pdf.ts";
+      const file = new URLSearchParams(location.search).get("file");
+      const bytes = new Uint8Array(await (await fetch(file)).arrayBuffer());
+      const { notebook, attachments, report } = importGoodnotes(bytes);
+      for (const page of notebook.pages) {
+        const canvas = document.createElement("canvas");
+        canvas.width = Math.round(page.width);
+        canvas.height = Math.round(page.height);
+        canvas.style.cssText = "display:block;width:700px;margin:0 0 8px";
+        const bg = page.background
+          ? await renderPdfPage(page.background.attachment, async () => attachments.get(page.background.attachment), page.background.page, canvas.width)
+          : undefined;
+        renderPage(canvas.getContext("2d"), page, bg);
+        document.body.append(canvas);
+      }
+      document.title = "done " + JSON.stringify(report);
+    </script>
+  </body>
+</html>

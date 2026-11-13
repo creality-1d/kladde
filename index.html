@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
+    <title>Inknotes</title>
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <aside id="library">
+      <header><h1>Inknotes</h1><button id="new-notebook" title="Neues Notizbuch">＋</button></header>
+      <ul id="notebooks"></ul>
+      <footer>
+        <button id="sync">Mit Nextcloud synchronisieren</button>
+        <button id="import">Goodnotes-Datei importieren</button>
+        <input id="import-file" type="file" accept=".goodnotes" multiple hidden />
+        <button id="settings">Nextcloud-Konto</button>
+        <p id="status"></p>
+      </footer>
+    </aside>
+    <main>
+      <nav id="toolbar">
+        <button data-tool="pen" class="active">Stift</button>
+        <button data-tool="highlighter">Marker</button>
+        <button data-tool="eraser">Radierer</button>
+        <button data-tool="text">Text</button>
+        <input id="color" type="color" value="#1d3557" />
+        <input id="width" type="range" min="1" max="12" value="3" />
+        <button id="undo">Rückgängig</button>
+        <select id="template">
+          <option value="lined">Liniert</option>
+          <option value="grid">Kariert</option>
+          <option value="dotted">Gepunktet</option>
+          <option value="blank">Blanko</option>
+        </select>
+        <button id="add-page">Seite ＋</button>
+        <button id="delete-page">Seite löschen</button>
+        <button id="export">Exportieren (PDF)</button>
+        <span id="page-label"></span>
+        <button id="prev">‹</button><button id="next">›</button>
+      </nav>
+      <div id="stage"><canvas id="page"></canvas></div>
+    </main>
+    <dialog id="account">
+      <form method="dialog">
+        <h2>Nextcloud-Konto</h2>
+        <label>Server-URL <input name="server" placeholder="https://cloud.example.org" required /></label>
+        <label>Benutzername <input name="user" required /></label>
+        <label>App-Passwort <input name="appPassword" type="password" required /></label>
+        <label>Ordner <input name="folder" value="Inknotes" required /></label>
+        <menu><button value="cancel" formnovalidate>Abbrechen</button><button value="save">Speichern</button></menu>
+      </form>
+    </dialog>
+    <div id="print"></div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
