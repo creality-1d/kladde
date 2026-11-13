@@ -8,9 +8,9 @@
     "build": "tsc --noEmit && vite build",
     "test": "vitest run",
     "desktop": "vite build && electron .",
-    "dist:win": "vite build && electron-builder --win nsis portable",
-    "dist:linux": "vite build && electron-builder --linux AppImage tar.gz",
-    "dist:mac": "vite build && electron-builder --mac dmg",
+    "dist:win": "vite build && electron-builder --win nsis portable --publish never",
+    "dist:linux": "vite build && electron-builder --linux AppImage tar.gz --publish never",
+    "dist:mac": "vite build && electron-builder --mac dmg --publish never",
     "ios:ipa": "bash scripts/build-ipa.sh"
   },
   "devDependencies": {
