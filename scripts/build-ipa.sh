@@ -35,6 +35,18 @@ npx cap sync ios
 
 BUILD_SETTINGS=(MARKETING_VERSION="$VERSION" CURRENT_PROJECT_VERSION="$BUILD_NUMBER")
 
+# Writes <ipa>.json with the built app's Info.plist, size and SHA-256 for
+# scripts/altstore-source.mjs, so the AltStore source matches the .ipa exactly.
+write_metadata() {
+  local app=$1 ipa=$2
+  plutil -convert json -o "$WORK/Info.json" "$app/Info.plist"
+  node -e '
+    const fs = require("fs");
+    const [info, ipa, sha256] = process.argv.slice(1);
+    fs.writeFileSync(ipa + ".json", JSON.stringify({ info: JSON.parse(fs.readFileSync(info, "utf8")), size: fs.statSync(ipa).size, sha256 }, null, 2) + "\n");
+  ' "$WORK/Info.json" "$ipa" "$(shasum -a 256 "$ipa" | cut -d" " -f1)"
+}
+
 if [[ -z "${TEAM_ID:-}" ]]; then
   echo "Baue unsignierte .ipa …"
   xcodebuild -project "$PROJECT" -scheme App -configuration Release -destination generic/platform=iOS \
@@ -46,6 +58,7 @@ if [[ -z "${TEAM_ID:-}" ]]; then
   IPA="release/Inknotes-$VERSION-unsigned.ipa"
   rm -f "$IPA"
   (cd "$WORK" && zip -qry "../$(basename "$IPA")" Payload)
+  write_metadata "$WORK/Payload/App.app" "$IPA"
   echo "Fertig: $IPA"
   echo "Mit Sideloadly oder AltStore auf das iPad bringen; sie signieren mit deiner Apple-ID."
   exit 0
@@ -76,4 +89,5 @@ xcodebuild -exportArchive -archivePath "$ARCHIVE" -exportPath "$WORK/export" \
   -exportOptionsPlist "$WORK/ExportOptions.plist" -allowProvisioningUpdates
 IPA="release/Inknotes-$VERSION.ipa"
 cp "$WORK/export/"*.ipa "$IPA"
+write_metadata "$ARCHIVE/Products/Applications/App.app" "$IPA"
 echo "Fertig: $IPA"

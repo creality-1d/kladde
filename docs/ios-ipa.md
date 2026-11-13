@@ -31,6 +31,8 @@ Mit einer kostenlosen Apple-ID läuft die App 7 Tage, danach erneut installieren
 
 Den gleichen Build erzeugt auch der GitHub-Workflow (Job `ios`, Artefakt `ios-ipa`), sobald das Projekt auf GitHub liegt. Dafür ist dann kein eigener Mac nötig.
 
+Bequemer ist eine AltStore-Quelle: Dann installiert und aktualisiert AltStore die App direkt aus dem Netz, ohne dass du die `.ipa` von Hand kopierst. Siehe [altstore.md](altstore.md).
+
 ## Weg B: Von Xcode signierte .ipa
 
 1. In Xcode unter **Xcode → Settings → Accounts** deine Apple-ID hinzufügen.

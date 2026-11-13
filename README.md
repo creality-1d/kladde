@@ -30,6 +30,7 @@ Inknotes ist eine eigenständige App. Sie enthält keinen Code und keine Gestalt
 | macOS | `Inknotes-<version>.dmg` | `npm run dist:mac` (nur auf einem Mac) |
 | Android | `app-debug.apk` | `npx vite build && npx cap sync android`, dann `android/gradlew assembleDebug` (JDK 21, Android SDK 36) |
 | iPad | `Inknotes-<version>.ipa` | auf einem Mac: `npm run ios:ipa`, Anleitung in [docs/ios-ipa.md](docs/ios-ipa.md) |
+| iPad über AltStore | AltStore-Quelle `…/releases/latest/download/altstore.json` | Git-Tag `v<version>` pushen, Anleitung in [docs/altstore.md](docs/altstore.md) |
 | iPad ohne Mac | Web-App | `dist/` auf einen Webserver legen, in Safari öffnen, „Zum Home-Bildschirm“ |
 
 Der Workflow [.github/workflows/build.yml](.github/workflows/build.yml) baut alle Pakete auf GitHub, auch macOS und iOS auf Mac-Runnern.

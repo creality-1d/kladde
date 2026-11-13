@@ -1,0 +1,56 @@
+# Publishes an iPad release for AltStore (docs/altstore.md).
+# Push a tag like v0.2.0 that matches package.json. The release carries the
+# .ipa, altstore.json and the icon; AltStore reads the source from
+# https://github.com/<owner>/<repo>/releases/latest/download/altstore.json
+name: altstore
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+        # Full history: the build number is the commit count and must grow with every release.
+        with: { fetch-depth: 0 }
+      - uses: actions/setup-node@v4
+        with: { node-version: 24, cache: npm }
+      - name: Check tag matches package.json
+        run: |
+          version=$(node -p "require('./package.json').version")
+          [ "$GITHUB_REF_NAME" = "v$version" ] || { echo "Tag $GITHUB_REF_NAME passt nicht zu package.json ($version)"; exit 1; }
+          echo "VERSION=$version" >> "$GITHUB_ENV"
+      - run: npm ci
+      - run: npm test
+      - run: npm run ios:ipa
+      - name: Write AltStore source
+        env:
+          BASE: https://github.com/${{ github.repository }}/releases
+        run: |
+          ipa="Inknotes-$VERSION-unsigned.ipa"
+          cp public/icons/icon-512.png release/icon.png
+          # Keep the versions of the release published so far.
+          previous=()
+          if curl -fsSL "$BASE/latest/download/altstore.json" -o release/previous.json; then previous=(--previous release/previous.json); fi
+          last_tag=$(git describe --tags --abbrev=0 "$GITHUB_REF_NAME^" 2>/dev/null || true)
+          git log --format='- %s' ${last_tag:+"$last_tag.."}"$GITHUB_REF_NAME" > release/notes.txt
+          node scripts/altstore-source.mjs \
+            --meta "release/$ipa.json" \
+            --download-url "$BASE/download/$GITHUB_REF_NAME/$ipa" \
+            --icon-url "$BASE/latest/download/icon.png" \
+            --source-url "$BASE/latest/download/altstore.json" \
+            --notes release/notes.txt \
+            "${previous[@]}" \
+            --out release/altstore.json
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            release/Inknotes-*-unsigned.ipa
+            release/altstore.json
+            release/icon.png
+          body_path: release/notes.txt
