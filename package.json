@@ -10,7 +10,8 @@
     "desktop": "vite build && electron .",
     "dist:win": "vite build && electron-builder --win nsis portable",
     "dist:linux": "vite build && electron-builder --linux AppImage tar.gz",
-    "dist:mac": "vite build && electron-builder --mac dmg"
+    "dist:mac": "vite build && electron-builder --mac dmg",
+    "ios:ipa": "bash scripts/build-ipa.sh"
   },
   "devDependencies": {
     "@capacitor/cli": "^8.5.3",
