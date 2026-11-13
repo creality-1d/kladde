@@ -56,3 +56,14 @@ async function syncAttachments(notebooks: Notebook[], listed: Set<string>, remot
     else if (!bytes && listed.has(name)) await local.put(id, await remote.getBinary(name));
   }
 }
+
+/**
+ * Sync works on a copy so drawing can continue meanwhile. This folds the sync
+ * result back into the live notebooks: edits made during the sync are newer
+ * and win per page, and notebooks created meanwhile are kept.
+ */
+export function mergeBack(live: Notebook[], synced: Notebook[]): Notebook[] {
+  const byId = new Map(live.map((nb) => [nb.id, nb]));
+  const ids = new Set(synced.map((nb) => nb.id));
+  return [...synced.map((nb) => (byId.has(nb.id) ? mergeNotebook(byId.get(nb.id)!, nb) : nb)), ...live.filter((nb) => !ids.has(nb.id))];
+}

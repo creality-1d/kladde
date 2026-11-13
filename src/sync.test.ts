@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { mergeNotebook, newNotebook, newPage, type Notebook } from "./model";
-import { syncNotebooks, type RemoteStore } from "./sync";
+import { mergeBack, syncNotebooks, type RemoteStore } from "./sync";
 
 const clone = (nb: Notebook): Notebook => structuredClone(nb);
 
@@ -72,5 +72,24 @@ describe("syncNotebooks", () => {
     await syncNotebooks([nb], remote, store(tablet));
     await syncNotebooks([], remote, store(laptop));
     expect([...(laptop.get("pdf-1") ?? [])]).toEqual([37, 80, 68, 70]);
+  });
+});
+
+describe("mergeBack", () => {
+  it("keeps edits and notebooks made while a sync ran", async () => {
+    const remote = new MemoryRemote();
+    const other = newNotebook("Remote", 1);
+    remote.files.set(`${other.id}.inknote.json`, JSON.stringify(other));
+    const nb = newNotebook("Live", 1);
+    const live = [nb];
+    const running = syncNotebooks(structuredClone(live), remote);
+    // Meanwhile: a stroke on the live page and a new notebook.
+    nb.pages[0].strokes.push({ id: "s", tool: "pen", color: "#000", width: 2, points: [] });
+    nb.pages[0].updatedAt = nb.updatedAt = 5;
+    const created = newNotebook("Neu", 6);
+    live.push(created);
+    const merged = mergeBack(live, await running);
+    expect(merged.map((x) => x.title).sort()).toEqual(["Live", "Neu", "Remote"]);
+    expect(merged.find((x) => x.id === nb.id)!.pages[0].strokes).toHaveLength(1);
   });
 });

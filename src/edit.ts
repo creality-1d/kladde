@@ -70,6 +70,22 @@ export function moveSelection(page: Page, selection: Selection, dx: number, dy: 
   for (const i of page.images ?? []) if (selection.images.has(i.id)) Object.assign(i, { x: i.x + dx, y: i.y + dy });
 }
 
+/** Scales the selection by factor around origin; stroke widths and font sizes scale too. */
+export function scaleSelection(page: Page, selection: Selection, origin: { x: number; y: number }, factor: number): void {
+  const at = (x: number, y: number) => ({ x: origin.x + (x - origin.x) * factor, y: origin.y + (y - origin.y) * factor });
+  for (const s of page.strokes) {
+    if (!selection.strokes.has(s.id)) continue;
+    s.points = s.points.map((p) => ({ ...p, ...at(p.x, p.y) }));
+    s.width *= factor;
+  }
+  for (const t of page.texts ?? []) {
+    if (selection.texts.has(t.id)) Object.assign(t, at(t.x, t.y), { width: t.width * factor, fontSize: t.fontSize * factor });
+  }
+  for (const i of page.images ?? []) {
+    if (selection.images.has(i.id)) Object.assign(i, at(i.x, i.y), { width: i.width * factor, height: i.height * factor });
+  }
+}
+
 export function deleteSelection(page: Page, selection: Selection): void {
   page.strokes = page.strokes.filter((s) => !selection.strokes.has(s.id));
   page.texts = page.texts?.filter((t) => !selection.texts.has(t.id));

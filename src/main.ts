@@ -1,4 +1,4 @@
-import { deleteSelection, isEmpty, lassoSelect, moveSelection, recognizeShape, selectionBounds, type Selection } from "./edit";
+import { deleteSelection, isEmpty, lassoSelect, moveSelection, recognizeShape, scaleSelection, selectionBounds, type Selection } from "./edit";
 import { importGoodnotes } from "./goodnotes/import";
 import { drawStroke, hitsStroke, renderPage, textHeight } from "./ink";
 import {
@@ -17,7 +17,7 @@ import {
 } from "./model";
 import { renderPdfPage } from "./pdf";
 import { storage } from "./storage";
-import { syncNotebooks } from "./sync";
+import { mergeBack, syncNotebooks } from "./sync";
 import { WebDav, type NextcloudAccount } from "./webdav";
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -78,6 +78,7 @@ function touch(): void {
     current.updatedAt = now;
     void storage.put(current);
   }
+  scheduleSync();
 }
 
 const textHeightOf = (p: Page) => (id: string) => {
@@ -121,6 +122,7 @@ function renderLibrary(): void {
         nb.title = title;
         nb.updatedAt = Date.now();
         void storage.put(nb).then(render);
+        scheduleSync();
       }
     };
     items.push(li);
@@ -182,7 +184,13 @@ function drawSelection(p: Page): void {
     ctx.stroke();
   }
   const box = selection && selectionBounds(p, selection, textHeightOf(p));
-  if (box) ctx.strokeRect(box.x - 8, box.y - 8, box.width + 16, box.height + 16);
+  if (box) {
+    ctx.strokeRect(box.x - 8, box.y - 8, box.width + 16, box.height + 16);
+    // Drag the corner handle to resize the selection.
+    ctx.setLineDash([]);
+    ctx.fillStyle = "#2a6fdb";
+    ctx.fillRect(box.x + box.width - 2, box.y + box.height - 2, 20, 20);
+  }
   ctx.restore();
 }
 
@@ -215,20 +223,100 @@ function erase(at: Point): void {
   }
 }
 
+// Pointer gestures. One pointer owns a gesture at a time; two fingers pinch to zoom.
+let active: { id: number; type: string } | undefined;
+const touches = new Map<number, { x: number; y: number }>();
+let pinch: { distance: number; zoom: number; mid: { x: number; y: number } } | undefined;
+let panFrom: { x: number; y: number } | undefined;
+let resizeFrom: { origin: { x: number; y: number }; distance: number } | undefined;
+const PEN_KEY = "inknotes.penSeen";
+// Once a stylus has written, one finger scrolls instead of drawing.
+let penSeen = (() => {
+  try {
+    return localStorage.getItem(PEN_KEY) === "1";
+  } catch {
+    return false;
+  }
+})();
+
+const client = (event: PointerEvent) => ({ x: event.clientX, y: event.clientY });
+const HANDLE = 28;
+const nearHandle = (box: { x: number; y: number; width: number; height: number }, at: Point) =>
+  Math.abs(at.x - (box.x + box.width + 8)) <= HANDLE && Math.abs(at.y - (box.y + box.height + 8)) <= HANDLE;
+
+/** Ends the current gesture without committing an unfinished stroke or lasso. */
+function cancelGesture(): void {
+  if (active && canvas.hasPointerCapture(active.id)) canvas.releasePointerCapture(active.id);
+  if (dragFrom || resizeFrom) touch();
+  active = drawing = lasso = dragFrom = resizeFrom = panFrom = undefined;
+  render();
+}
+
+function startPinch(): void {
+  const [a, b] = [...touches.values()];
+  pinch = { distance: Math.max(1, Math.hypot(a.x - b.x, a.y - b.y)), zoom, mid: { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 } };
+}
+
+function updatePinch(): void {
+  if (!pinch || touches.size < 2) return;
+  const [a, b] = [...touches.values()];
+  const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+  // Keep the page point under the previous finger midpoint under the new one.
+  const before = canvas.getBoundingClientRect();
+  const fx = (pinch.mid.x - before.left) / before.width;
+  const fy = (pinch.mid.y - before.top) / before.height;
+  setZoom(pinch.zoom * (Math.hypot(a.x - b.x, a.y - b.y) / pinch.distance));
+  const after = canvas.getBoundingClientRect();
+  const stage = $("stage");
+  stage.scrollLeft += after.left + fx * after.width - mid.x;
+  stage.scrollTop += after.top + fy * after.height - mid.y;
+  pinch.mid = mid;
+}
+
 canvas.addEventListener("pointerdown", (event) => {
   const p = page();
-  // Palm rejection: while a pen is in use, ignore touch input.
-  if (!p || (event.pointerType === "touch" && drawing)) return;
+  if (!p) return;
+  if (event.pointerType === "pen") {
+    if (!penSeen) {
+      penSeen = true;
+      try {
+        localStorage.setItem(PEN_KEY, "1");
+      } catch {
+        // Only a convenience; without storage the next start draws with fingers again.
+      }
+    }
+    // The palm often lands before the pen; the pen takes over.
+    if (active?.type === "touch") cancelGesture();
+  }
+  if (event.pointerType === "touch") {
+    touches.set(event.pointerId, client(event));
+    // Palm rejection: while the pen writes, touches are ignored.
+    if (active?.type === "pen") return;
+    if (touches.size === 2) {
+      cancelGesture();
+      return startPinch();
+    }
+    if (touches.size > 2 || pinch) return;
+  }
+  if (active) return;
+  if (tool === "text") return addText(pointFrom(event));
+  active = { id: event.pointerId, type: event.pointerType };
   canvas.setPointerCapture(event.pointerId);
+  if (event.pointerType === "touch" && penSeen) {
+    panFrom = client(event);
+    return;
+  }
   const at = pointFrom(event);
   if (tool === "eraser") {
     checkpoint();
     return erase(at);
   }
-  if (tool === "text") return addText(at);
   if (tool === "lasso") {
     const box = selection && selectionBounds(p, selection, textHeightOf(p));
-    if (box && at.x >= box.x - 8 && at.x <= box.x + box.width + 8 && at.y >= box.y - 8 && at.y <= box.y + box.height + 8) {
+    if (box && nearHandle(box, at)) {
+      checkpoint();
+      resizeFrom = { origin: { x: box.x, y: box.y }, distance: Math.hypot(at.x - box.x, at.y - box.y) };
+    } else if (box && at.x >= box.x - 8 && at.x <= box.x + box.width + 8 && at.y >= box.y - 8 && at.y <= box.y + box.height + 8) {
       checkpoint();
       dragFrom = at;
     } else {
@@ -267,12 +355,28 @@ function addText(at: Point): void {
 }
 
 canvas.addEventListener("pointermove", (event) => {
-  if (!canvas.hasPointerCapture(event.pointerId)) return;
+  if (touches.has(event.pointerId)) touches.set(event.pointerId, client(event));
+  if (pinch) return updatePinch();
+  if (event.pointerId !== active?.id) return;
+  if (panFrom) {
+    const now = client(event);
+    $("stage").scrollBy(panFrom.x - now.x, panFrom.y - now.y);
+    panFrom = now;
+    return;
+  }
   const events = event.getCoalescedEvents?.() ?? [event];
   const p = page();
   if (tool === "eraser") return events.forEach((e) => erase(pointFrom(e)));
   if (lasso) {
     lasso.push(...events.map(pointFrom));
+    return render();
+  }
+  if (resizeFrom && selection && p) {
+    const at = pointFrom(event);
+    const distance = Math.hypot(at.x - resizeFrom.origin.x, at.y - resizeFrom.origin.y);
+    if (distance < 10 || resizeFrom.distance < 1) return;
+    scaleSelection(p, selection, resizeFrom.origin, distance / resizeFrom.distance);
+    resizeFrom.distance = distance;
     return render();
   }
   if (dragFrom && selection && p) {
@@ -287,14 +391,28 @@ canvas.addEventListener("pointermove", (event) => {
   drawStroke(ctx, drawing);
 });
 
-const finish = () => {
+const finish = (event: PointerEvent) => {
+  touches.delete(event.pointerId);
+  if (pinch && touches.size < 2) pinch = undefined;
+  if (event.pointerId !== active?.id) return;
+  active = undefined;
+  if (panFrom) {
+    panFrom = undefined;
+    return;
+  }
   const p = page();
+  // Busy frames can deliver few move events; the release point completes the stroke.
+  if (drawing && event.type === "pointerup") {
+    const end = pointFrom(event);
+    const last = drawing.points[drawing.points.length - 1];
+    if (end.x !== last.x || end.y !== last.y) drawing.points.push({ ...end, p: last.p });
+  }
   if (lasso && p) {
     selection = lasso.length > 2 ? lassoSelect(p, lasso, textHeightOf(p)) : undefined;
     if (selection && isEmpty(selection)) selection = undefined;
     lasso = undefined;
-  } else if (dragFrom) {
-    dragFrom = undefined;
+  } else if (dragFrom || resizeFrom) {
+    dragFrom = resizeFrom = undefined;
     touch();
   } else if (drawing && p) {
     if (tool === "shape") drawing.points = recognizeShape(drawing.points) ?? drawing.points;
@@ -351,6 +469,7 @@ $("new-notebook").onclick = async () => {
   nb.folder = current?.folder;
   notebooks.push(nb);
   await storage.put(nb);
+  scheduleSync();
   open(nb);
 };
 
@@ -361,6 +480,7 @@ $("folder").onclick = () => {
   current.folder = folder.trim() || undefined;
   current.updatedAt = Date.now();
   void storage.put(current).then(render);
+  scheduleSync();
 };
 
 $<HTMLInputElement>("search").oninput = (event) => {
@@ -472,6 +592,11 @@ $("export").onclick = async () => {
 };
 
 $("import").onclick = () => $<HTMLInputElement>("import-file").click();
+// iOS greys out files whose extension it has no type for, and .goodnotes is
+// only known when Goodnotes is installed. The importer validates the file instead.
+if (/iPhone|iPad|Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints > 1) {
+  $<HTMLInputElement>("import-file").removeAttribute("accept");
+}
 $<HTMLInputElement>("import-file").onchange = async (event) => {
   const input = event.target as HTMLInputElement;
   const status = $("status");
@@ -484,6 +609,7 @@ $<HTMLInputElement>("import-file").onchange = async (event) => {
       notebook.folder = current?.folder;
       notebooks.push(notebook);
       await storage.put(notebook);
+      scheduleSync();
       open(notebook);
       status.textContent = `Importiert: ${notebook.title} (${report.pages} Seiten, ${report.strokes} Striche, ${report.texts} Texte)`;
       if (report.warnings.length) console.warn(report.warnings);
@@ -517,24 +643,52 @@ dialog.addEventListener("close", () => {
   localStorage.setItem(ACCOUNT_KEY, JSON.stringify(data));
 });
 
-$("sync").onclick = async () => {
+// Sync runs on a copy; edits made meanwhile merge back in and trigger another sync.
+let syncing = false;
+let changedDuringSync = false;
+let syncTimer: ReturnType<typeof setTimeout> | undefined;
+const AUTO_SYNC_DELAY = 20_000;
+
+/** Called after every local change: syncs once editing has paused. */
+function scheduleSync(): void {
+  if (syncing) changedDuringSync = true;
+  if (!loadAccount()) return;
+  clearTimeout(syncTimer);
+  syncTimer = setTimeout(() => void sync(), AUTO_SYNC_DELAY);
+}
+
+async function sync(): Promise<void> {
   const account = loadAccount();
+  if (!account || syncing) return;
+  clearTimeout(syncTimer);
+  syncing = true;
+  changedDuringSync = false;
   const status = $("status");
-  if (!account) return $("settings").click();
   status.textContent = "Synchronisiere …";
   try {
-    notebooks = await syncNotebooks(notebooks, new WebDav(account), {
+    const synced = await syncNotebooks(structuredClone(notebooks), new WebDav(account), {
       get: (id) => storage.getAttachment(id),
       put: (id, bytes) => storage.putAttachment(id, bytes),
     });
+    notebooks = mergeBack(notebooks, synced);
     await Promise.all(notebooks.map((nb) => storage.put(nb)));
     current = notebooks.find((nb) => nb.id === current?.id) ?? current;
     status.textContent = `Synchronisiert: ${new Date().toLocaleTimeString()}`;
   } catch (error) {
-    status.textContent = `Fehler: ${(error as Error).message}`;
+    status.textContent = `Sync-Fehler: ${(error as Error).message}`;
+  } finally {
+    syncing = false;
   }
-  render();
-};
+  if (changedDuringSync) scheduleSync();
+  // Keep an in-progress stroke or lasso on screen; the next render shows synced content.
+  if (!active) render();
+}
+
+$("sync").onclick = () => (loadAccount() ? void sync() : $("settings").click());
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "hidden" && syncTimer !== undefined) void sync();
+});
+window.addEventListener("online", () => void sync());
 
 // Installed web app only; the Electron and Capacitor shells ship their files.
 if ("serviceWorker" in navigator && location.protocol === "https:" && !("Capacitor" in window)) {
@@ -551,4 +705,5 @@ void (async () => {
     await storage.put(nb);
   }
   open(notebooks[0]);
+  void sync();
 })();

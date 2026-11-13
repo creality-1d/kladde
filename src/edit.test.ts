@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { deleteSelection, insidePolygon, lassoSelect, moveSelection, recognizeShape } from "./edit";
+import { deleteSelection, insidePolygon, lassoSelect, moveSelection, recognizeShape, scaleSelection } from "./edit";
 import { newPage, type Point, type Stroke } from "./model";
 
 const pt = (x: number, y: number): Point => ({ x, y, p: 0.5 });
@@ -28,6 +28,18 @@ describe("lasso", () => {
     deleteSelection(page, selection);
     expect(page.strokes.map((s) => s.id)).toEqual(["out"]);
     expect(page.texts).toEqual([]);
+  });
+
+  it("scales selected content around an origin", () => {
+    const page = newPage("blank");
+    page.strokes = [stroke("in", [pt(10, 10), pt(20, 20)]), stroke("out", [pt(200, 200), pt(210, 210)])];
+    page.texts = [{ id: "t", x: 30, y: 30, width: 20, text: "a", fontSize: 10, color: "#000" }];
+    page.images = [{ id: "i", x: 40, y: 40, width: 10, height: 6, attachment: "a" }];
+    scaleSelection(page, { strokes: new Set(["in"]), texts: new Set(["t"]), images: new Set(["i"]) }, { x: 10, y: 10 }, 2);
+    expect(page.strokes[0]).toMatchObject({ width: 4, points: [{ x: 10, y: 10 }, { x: 30, y: 30 }] });
+    expect(page.strokes[1]).toMatchObject({ width: 2, points: [{ x: 200, y: 200 }, { x: 210, y: 210 }] });
+    expect(page.texts[0]).toMatchObject({ x: 50, y: 50, width: 40, fontSize: 20 });
+    expect(page.images[0]).toMatchObject({ x: 70, y: 70, width: 20, height: 12 });
   });
 });
 
