@@ -44,6 +44,7 @@
         <div id="tabs"></div>
         <div class="bar-right">
           <span id="page-label"></span>
+          <button id="record" class="icon" title="Audio aufnehmen" data-icon="mic"><span id="record-time"></span></button>
           <button id="find" class="icon" title="Suchen (auch Handschrift und PDF-Text)" data-icon="search"></button>
           <button id="add-page" class="icon" title="Seite hinzufügen" data-icon="plus"></button>
           <button id="share" class="icon" title="Teilen und exportieren" data-icon="share"></button>
@@ -81,6 +82,15 @@
         </aside>
         <div id="stage"><div id="pages"></div></div>
         <div id="ruler" hidden><span id="ruler-angle"></span></div>
+      </div>
+      <div id="rec-panel" class="float-panel" hidden>
+        <div class="search-row">
+          <b>Aufnahmen</b>
+          <span class="spacer"></span>
+          <button id="rec-close" class="icon" title="Schließen" data-icon="close"></button>
+        </div>
+        <p id="rec-empty" class="hint">Noch keine Aufnahmen. Der Mikrofon-Knopf oben startet und beendet eine Aufnahme.</p>
+        <div id="rec-list"></div>
       </div>
       <div id="search-panel" hidden>
         <div class="search-row">

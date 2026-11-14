@@ -33,15 +33,21 @@ Kladde ist so aufgebaut, dass man von Goodnotes ohne Umgewöhnung weiterarbeiten
 - Neue Seiten übernehmen Papier und Format der aktuellen Seite
 - Lesezeichen und Gliederung
 - Mehrere Notizbücher als Tabs
-- Bibliothek mit Deckblättern, Ordnern, „Zuletzt“, Favoriten und Suche (Titel, Ordner, getippter Text, Gliederung)
+- Bibliothek mit Deckblättern, Ordnern, „Zuletzt“, Favoriten, Papierkorb und Suche
+- Suche in Handschrift (iPad-App, Texterkennung von Apple direkt auf dem Gerät), in PDF-Text und getipptem Text; Treffer werden auf der Seite markiert, auch aus der Bibliothek heraus
+- Audioaufnahme pro Notizbuch (Mikrofon-Knopf oben), Liste mit Abspielen, Teilen, Löschen und Sprung zur Seite; wird mitsynchronisiert
+- Auf die Seitenzahl tippen springt zu einer Seite
+- Beim Hineinzoomen wird die Seite schärfer gerendert
 - Papier liniert, liniert weit, kariert, kariert klein, gepunktet, Cornell, blanko; Papierfarbe weiß, creme oder dunkel; A4 hoch oder quer
 - Deckblätter in sechs Farben oder die erste Seite als Deckblatt
 
 **Import, Export, Sync**
 - Import von Goodnotes-6-Dateien (Handschrift, Formen, Textmarker, getippter Text, Textfelder, PDF-Hintergründe), auch viele auf einmal oder als ZIP mit Ordnern; PDFs werden zu Notizbüchern
-- Export als echte PDF-Datei über das Teilen-Menü, alternativ Drucken
+- Export als echte PDF-Datei über das Teilen-Menü (auf dem iPad über das System-Teilen-Blatt: Dateien, AirDrop, Mail …)
+- Datensicherung: alle Notizbücher mit PDFs, Bildern und Aufnahmen als eine ZIP-Datei (Einstellungen); einzelne Notizbücher als .kladde.zip weitergeben. Einspielen über „Importieren“, dabei gehen neuere Änderungen nicht verloren
+- Erinnerung an eine Sicherung, wenn ohne Nextcloud zwei Wochen lang keine gemacht wurde
 - Nextcloud-Sync über WebDAV mit App-Passwort; Notizbücher und PDF-Anhänge. Synchronisiert beim Start, 20 Sekunden nach der letzten Änderung und beim Wechsel in den Hintergrund
-- Offline nutzbar; Daten liegen lokal auf dem Gerät
+- Offline nutzbar; Daten liegen lokal auf dem Gerät. Gespeichert wird seitenweise kurz nach jeder Pause, auch große Notizbücher bremsen den Stift nicht
 
 ## Installation
 
@@ -85,6 +91,8 @@ GOODNOTES_SAMPLES=test-samples npm test   # zusätzlich eigene .goodnotes-Dateie
 
 Ehrlich gesagt deckt Kladde nicht alles ab, was Goodnotes 6 kann:
 
-- **Nicht vorhanden:** KI-Funktionen (Goodnotes nutzt dafür eigene Cloud-Modelle), Handschrifterkennung und Suche in Handschrift, Live-Zusammenarbeit, Marketplace, Audioaufnahmen, Sticker, Präsentationsmodus mit externem Bildschirm, Deckblatt-Bilder und Papiervorlagen aus einem Marketplace.
+- **Nicht vorhanden:** KI-Funktionen (Goodnotes nutzt dafür eigene Cloud-Modelle), Umwandeln von Handschrift in Text, Live-Zusammenarbeit, Marketplace, Sticker, Präsentationsmodus mit externem Bildschirm, Deckblatt-Bilder und Papiervorlagen aus einem Marketplace.
+- **Handschriftsuche** gibt es nur in der iPad-App (sie nutzt Apples Texterkennung); auf Windows, Linux, Android und im Browser werden PDF-Text und getippter Text durchsucht.
+- **Audio:** Aufnahmen laufen nur, solange Kladde im Vordergrund ist; beim Wechsel in eine andere App wird die Aufnahme beendet und gespeichert. Die Schrift wird beim Abspielen nicht mitgezeigt.
 - **Goodnotes-Import:** Formatwechsel innerhalb eines Absatzes werden vereinfacht, Zeilenumbrüche können leicht abweichen; Bilder und andere Elementarten waren in den Beispieldateien nicht enthalten und werden noch nicht übernommen. Es gibt keinen Export zurück ins Goodnotes-Format.
 - **Sync:** gleichzeitige Bearbeitung derselben Seite auf zwei Geräten wird nicht zusammengeführt; die zuletzt geänderte Fassung gewinnt.

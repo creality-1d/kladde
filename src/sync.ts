@@ -1,4 +1,4 @@
-import { mergeNotebook, pageAttachments, type Notebook } from "./model";
+import { mergeNotebook, notebookAttachments, type Notebook } from "./model";
 
 export interface RemoteStore {
   ensureFolder(): Promise<void>;
@@ -48,7 +48,7 @@ export async function syncNotebooks(local: Notebook[], remote: RemoteStore, atta
 
 /** Attachments are immutable and named by id, so copying missing ones both ways suffices. */
 async function syncAttachments(notebooks: Notebook[], listed: Set<string>, remote: RemoteStore, local: AttachmentStore): Promise<void> {
-  const ids = new Set(notebooks.flatMap((nb) => nb.pages.flatMap(pageAttachments)));
+  const ids = new Set(notebooks.flatMap(notebookAttachments));
   for (const id of ids) {
     const name = attachmentName(id);
     const bytes = await local.get(id);

@@ -2,7 +2,7 @@
 
 Ziel von Kladde: Wer von Goodnotes kommt, soll ohne Umgewöhnung weiterschreiben können. Übernommen sind deshalb Anordnung und Gesten, nicht die Gestaltung: Icons, Farben und Texte sind eigene.
 
-Stand: Kladde 0.3.0. „Getestet“ heißt, dass der Ablauf in den automatischen Oberflächentests (Electron mit echten Stift-, Finger- und Mauseingaben) oder Unit-Tests geprüft wurde. Die Spalte zu Goodnotes beschreibt Goodnotes 6 auf dem iPad.
+Stand: Kladde 0.4.0. „Getestet“ heißt, dass der Ablauf in den automatischen Oberflächentests (Electron mit echten Stift-, Finger- und Mauseingaben) oder Unit-Tests geprüft wurde. Die Spalte zu Goodnotes beschreibt Goodnotes 6 auf dem iPad.
 
 ## Gewohnheiten, die gleich funktionieren
 
@@ -32,8 +32,14 @@ Stand: Kladde 0.3.0. „Getestet“ heißt, dass der Ablauf in den automatischen
 | Lesezeichen und Gliederung | ja | ja | getestet (Lesezeichen) |
 | Tabs für mehrere Dokumente | ja | ja | getestet |
 | Bibliothek mit Deckblättern, Ordnern, Favoriten, Zuletzt, Suche | ja | ja | getestet |
+| Papierkorb mit Wiederherstellen | ja | ja | getestet |
+| Suche in Handschrift | ja | ja, in der iPad-App (Apple-Texterkennung auf dem Gerät) | Ablauf getestet mit Ersatz-Erkennung; echte Erkennung nur auf dem iPad |
+| Suche in PDF-Text, Treffer auf der Seite markiert | ja | ja | getestet |
+| Audioaufnahme | ja, mit Wiedergabe der Schrift im Takt | ja, ohne mitlaufende Schrift | getestet |
+| Zu Seite springen | ja | ja (Seitenzahl antippen) | – |
 | PDF öffnen und beschreiben | ja | ja | getestet |
-| Als PDF teilen | ja | ja (Teilen-Menü, sonst Download oder Druckdialog) | getestet (Download) |
+| Als PDF teilen | ja | ja (iPad: System-Teilen-Blatt) | getestet (Download); Teilen-Blatt nur auf dem iPad |
+| Sicherung aller Notizbücher | über iCloud | ZIP-Datei oder Nextcloud | getestet |
 
 ## Umzug von Goodnotes
 
@@ -45,8 +51,9 @@ Stand: Kladde 0.3.0. „Getestet“ heißt, dass der Ablauf in den automatischen
 
 ## Was Kladde nicht hat
 
-- KI-Funktionen, Handschrifterkennung, Suche in Handschrift
-- Live-Zusammenarbeit, Marketplace, Sticker, Audioaufnahmen
+- KI-Funktionen, Umwandeln von Handschrift in Text
+- Live-Zusammenarbeit, Marketplace, Sticker
+- Mitlaufende Schrift beim Abspielen von Aufnahmen
 - Deckblatt-Bilder und Vorlagen aus dem Marketplace, Präsentation auf externem Bildschirm
 - Bilder aus Goodnotes-Dateien (kamen in den Beispieldateien nicht vor)
 

@@ -4,7 +4,7 @@ import { createBackup, isBackup, restoreBackup } from "./backup";
 import { expandImport, joinFolder, notebookFromPdf } from "./bundle";
 import { copySelection, eraseAt, pasteClip, recolorSelection, rotateSelection, scribbleTargets } from "./edit";
 import { penFactor } from "./ink";
-import { newNotebook, newPage, PAGE_WIDTH, visiblePages, type Point, type Stroke } from "./model";
+import { mergeNotebook, newNotebook, newPage, notebookAttachments, PAGE_WIDTH, visiblePages, type Point, type Stroke } from "./model";
 import { duplicatePage, insertPage, insertPageAt, movePage, pageLike } from "./pages";
 import { writePdf } from "./pdfwrite";
 import { DEFAULTS, withDefaults } from "./settings";
@@ -270,5 +270,18 @@ describe("search", () => {
     expect(ink[0].boxes[0]).toMatchObject({ x: 7, y: 8 });
     expect(ink[0].snippet).toBe("Impulserhaltung");
     expect(normalize("Ärger  über")).toBe("arger uber");
+  });
+});
+
+describe("recordings sync", () => {
+  it("keeps recordings made on two devices and propagates deletions", () => {
+    const base = newNotebook("x", 1);
+    const rec = (id: string, at: number, deleted?: boolean) => ({ id, attachment: "a" + id, mime: "audio/mp4", createdAt: at, duration: 1000, updatedAt: at, deleted });
+    const a = { ...structuredClone(base), recordings: [rec("1", 10), rec("2", 20)], updatedAt: 20 };
+    const b = { ...structuredClone(base), recordings: [rec("1", 30, true), rec("3", 25)], updatedAt: 30 };
+    const merged = mergeNotebook(a, b);
+    // Ordered by start time; the deletion from the newer edit wins.
+    expect(merged.recordings!.map((r) => [r.id, !!r.deleted])).toEqual([["2", false], ["3", false], ["1", true]]);
+    expect(notebookAttachments(merged).sort()).toEqual(["a2", "a3"]);
   });
 });

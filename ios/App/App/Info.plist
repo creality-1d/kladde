@@ -64,6 +64,8 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Kladde nimmt Audio auf, wenn du während einer Vorlesung oder Besprechung die Aufnahme startest.</string>
 	<key>NSCameraUsageDescription</key>
 	<string>Kladde nutzt die Kamera, wenn du ein Foto direkt in eine Seite einfügst.</string>
 	<key>UIViewControllerBasedStatusBarAppearance</key>

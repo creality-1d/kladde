@@ -82,6 +82,23 @@ export interface Notebook {
   favorite?: boolean;
   /** Cover colour shown in the library; the first page is shown when missing. */
   cover?: string;
+  /** Audio recordings; merged by id like pages. */
+  recordings?: Recording[];
+}
+
+export interface Recording {
+  id: string;
+  /** Audio bytes in the attachment store. */
+  attachment: string;
+  mime: string;
+  /** Start time (ms since epoch) and length in ms. */
+  createdAt: number;
+  duration: number;
+  /** Page that was open when recording started. */
+  pageId?: string;
+  title?: string;
+  updatedAt: number;
+  deleted?: boolean;
 }
 
 export const PAGE_WIDTH = 1404;
@@ -117,15 +134,27 @@ export function mergeNotebook(local: Notebook, remote: Notebook): Notebook {
     if (!seen) order.push(page.id);
     pages.set(page.id, seen ? newer(seen, page) : page);
   }
-  return {
+  const recordings = new Map<string, Recording>();
+  for (const r of [...(local.recordings ?? []), ...(remote.recordings ?? [])]) {
+    const seen = recordings.get(r.id);
+    recordings.set(r.id, seen ? newer(seen, r) : r);
+  }
+  const merged: Notebook = {
     ...meta,
     updatedAt: Math.max(local.updatedAt, remote.updatedAt),
     pages: order.map((id) => pages.get(id)!),
   };
+  if (recordings.size) merged.recordings = [...recordings.values()].sort((a, b) => a.createdAt - b.createdAt);
+  return merged;
 }
 
 export function visiblePages(notebook: Notebook): Page[] {
   return notebook.pages.filter((page) => !page.deleted);
+}
+
+/** Attachment ids a notebook depends on: its pages and its recordings. */
+export function notebookAttachments(nb: Notebook): string[] {
+  return [...nb.pages.flatMap(pageAttachments), ...(nb.recordings ?? []).filter((r) => !r.deleted).map((r) => r.attachment)];
 }
 
 /** Attachment ids a page depends on (PDF background and images). */

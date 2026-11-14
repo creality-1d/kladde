@@ -22,7 +22,7 @@ import {
 import { importGoodnotes } from "./goodnotes/import";
 import { icons, type IconName } from "./icons";
 import { drawPenSegments, drawStroke, renderPage, textHeight } from "./ink";
-import { newId, newNotebook, PAGE_HEIGHT, PAGE_WIDTH, pageAttachments, visiblePages, type Notebook, type Page, type Point, type Stroke, type PaperColor, type PenType, type Template, type TextBox, type Tool } from "./model";
+import { newId, newNotebook, PAGE_HEIGHT, PAGE_WIDTH, pageAttachments, visiblePages, type Notebook, type Page, type Point, type Stroke, type PaperColor, type PenType, type Template, type TextBox, type Tool, type Recording } from "./model";
 import { duplicatePage, insertPage, insertPageAt, movePage, pageLike } from "./pages";
 import { pdfPageSizes, pdfPageText, renderPdfPage } from "./pdf";
 import { inkKey, pageRuns, pdfKey, searchNotebook, type IndexEntry, type PageHit, type TextRun } from "./search";
@@ -666,7 +666,8 @@ function buildSheets(): void {
 
 /** Sizes every sheet for the stage and zoom; CSS only, so it is cheap during pinch. */
 function layoutSheets(): void {
-  const width = stage.clientWidth - 32;
+  // Two pixels of slack: rounding must not add a horizontal scrollbar at 100 %.
+  const width = stage.clientWidth - 34;
   const height = stage.clientHeight - 56;
   for (const s of sheets) {
     const ratio = pageW(s.page) / pageH(s.page);
@@ -2160,6 +2161,7 @@ $("more").onclick = (event) => {
     { label: "Seiten nebeneinander", checked: settings.scroll === "horizontal", action: () => setScroll("horizontal") },
     { label: `Zoom zurücksetzen (${Math.round(zoom * 100)} %)`, action: () => setZoom(1) },
     { separator: true },
+    { label: `Aufnahmen (${(nb.recordings ?? []).filter((r) => !r.deleted).length})`, action: openRecordings },
     { label: "Notizbuch umbenennen", action: () => renameNotebook(nb) },
     { label: "Einstellungen", action: openSettings },
   ]);
@@ -2532,6 +2534,8 @@ async function sync(): Promise<void> {
 $("lib-sync").onclick = () => (loadAccount() ? void sync() : openSettings());
 document.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "hidden") {
+    // iOS suspends the web view in the background; keep what was recorded so far.
+    stopRecording();
     finishTextEdit();
     void storage.flush();
     if (syncTimer !== undefined) void sync();
@@ -2710,6 +2714,127 @@ function clearHighlight(): void {
   if (p) renderSheetOf(p);
 }
 
+// ---------------------------------------------------------------------------
+// Audio recordings, stored with the notebook and synced like PDFs
+
+let recording: { rec: MediaRecorder; stream: MediaStream; chunks: Blob[]; start: number; nb: Notebook; pageId?: string; timer: ReturnType<typeof setInterval> } | undefined;
+const recordButton = $("record");
+const clock = (ms: number) => {
+  const s = Math.floor(ms / 1000);
+  const hh = Math.floor(s / 3600);
+  const mm = String(Math.floor((s % 3600) / 60)).padStart(hh ? 2 : 1, "0");
+  return `${hh ? hh + ":" : ""}${mm}:${String(s % 60).padStart(2, "0")}`;
+};
+recordButton.onclick = () => (recording ? stopRecording() : void startRecording());
+recordButton.oncontextmenu = (event) => {
+  event.preventDefault();
+  openRecordings();
+};
+async function startRecording(): Promise<void> {
+  if (!current) return;
+  if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") return toast("Audioaufnahme wird auf diesem Gerät nicht unterstützt");
+  let stream: MediaStream;
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  } catch {
+    return toast("Kein Zugriff aufs Mikrofon. In den Systemeinstellungen für Kladde erlauben.", 5000);
+  }
+  const type = ["audio/mp4", "audio/webm;codecs=opus", "audio/webm"].find((t) => MediaRecorder.isTypeSupported(t));
+  const rec = new MediaRecorder(stream, type ? { mimeType: type } : undefined);
+  const r = { rec, stream, chunks: [] as Blob[], start: Date.now(), nb: current, pageId: page()?.id, timer: setInterval(() => ($("record-time").textContent = clock(Date.now() - r.start)), 500) };
+  recording = r;
+  rec.ondataavailable = (e) => e.data.size && r.chunks.push(e.data);
+  rec.onstop = () => void saveRecording(r);
+  rec.start(1000);
+  recordButton.classList.add("recording");
+  recordButton.title = "Aufnahme beenden";
+  $("record-time").textContent = "0:00";
+  toast("Aufnahme läuft – oben auf den roten Knopf tippen zum Beenden");
+}
+function stopRecording(): void {
+  if (!recording) return;
+  const r = recording;
+  recording = undefined;
+  clearInterval(r.timer);
+  r.rec.stop();
+  r.stream.getTracks().forEach((t) => t.stop());
+  recordButton.classList.remove("recording");
+  recordButton.title = "Audio aufnehmen";
+  $("record-time").textContent = "";
+}
+async function saveRecording(r: NonNullable<typeof recording>): Promise<void> {
+  const blob = new Blob(r.chunks, { type: r.rec.mimeType || r.chunks[0]?.type || "audio/mp4" });
+  if (!blob.size) return toast("Aufnahme war leer");
+  const attachment = newId();
+  await storage.putAttachment(attachment, new Uint8Array(await blob.arrayBuffer()));
+  const now = Date.now();
+  const entry: Recording = { id: newId(), attachment, mime: blob.type, createdAt: r.start, duration: now - r.start, pageId: r.pageId, updatedAt: now };
+  r.nb.recordings = [...(r.nb.recordings ?? []), entry];
+  r.nb.updatedAt = now;
+  storage.save(r.nb);
+  scheduleSync();
+  toast(`Aufnahme gespeichert (${clock(entry.duration)}) – Liste im Menü ⋯ → Aufnahmen`, 4000);
+  if (!$("rec-panel").hidden) renderRecordings();
+}
+
+const recUrls: string[] = [];
+function openRecordings(): void {
+  $("search-panel").hidden = true;
+  $("rec-panel").hidden = false;
+  renderRecordings();
+}
+function closeRecordings(): void {
+  $("rec-panel").hidden = true;
+  $("rec-list").replaceChildren();
+  recUrls.splice(0).forEach((u) => URL.revokeObjectURL(u));
+}
+$("rec-close").onclick = closeRecordings;
+function renderRecordings(): void {
+  const nb = current;
+  const list = (nb?.recordings ?? []).filter((r) => !r.deleted);
+  $("rec-empty").hidden = list.length > 0;
+  recUrls.splice(0).forEach((u) => URL.revokeObjectURL(u));
+  $("rec-list").replaceChildren(
+    ...list
+      .slice()
+      .reverse()
+      .map((r) => {
+        const pages = nb ? visiblePages(nb) : [];
+        const at = pages.findIndex((p) => p.id === r.pageId);
+        const when = new Date(r.createdAt).toLocaleString("de-DE", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+        const audio = h("audio", { controls: "", preload: "metadata" }) as HTMLAudioElement;
+        void storage.getAttachment(r.attachment).then((bytes) => {
+          if (!bytes) return audio.replaceWith(h("p", { class: "hint" }, "Audio noch nicht synchronisiert."));
+          const url = URL.createObjectURL(new Blob([bytes.slice()], { type: r.mime }));
+          recUrls.push(url);
+          audio.src = url;
+        });
+        const actions = h("div", { class: "rec-actions" });
+        if (at >= 0) {
+          const go = h("button", {}, `Zu S. ${at + 1}`);
+          go.onclick = () => scrollToPage(at, true);
+          actions.append(go);
+        }
+        const share = h("button", {}, "Teilen");
+        share.onclick = async () => {
+          const bytes = await storage.getAttachment(r.attachment);
+          if (bytes) await shareFile(`${safeName(nb!.title)} ${when.replace(/[:.,]/g, "-")}.${r.mime.includes("webm") ? "webm" : "m4a"}`, bytes, r.mime);
+        };
+        const del = h("button", { class: "danger" }, "Löschen");
+        del.onclick = () => {
+          if (!nb || !confirm("Diese Aufnahme löschen?")) return;
+          r.deleted = true;
+          r.updatedAt = nb.updatedAt = Date.now();
+          storage.save(nb);
+          scheduleSync();
+          renderRecordings();
+        };
+        actions.append(share, del);
+        return h("div", { class: "rec" }, h("div", { class: "rec-title" }, h("b", {}, r.title ?? when), h("span", {}, clock(r.duration))), audio, actions);
+      }),
+  );
+}
+
 // Debug and test hook: exposes state for automated UI tests.
 (window as unknown as { kladde: unknown }).kladde = {
   get notebooks() {
@@ -2770,3 +2895,11 @@ void (async () => {
   backupReminder();
   void sync();
 })();
+
+// Tapping the page number jumps to a page, as in other note apps.
+$("page-label").onclick = () => {
+  if (!current) return;
+  const count = visiblePages(current).length;
+  const n = Number(prompt(`Zu Seite (1–${count})`, String(pageIndex + 1)));
+  if (Number.isInteger(n) && n >= 1 && n <= count) scrollToPage(n - 1, true);
+};

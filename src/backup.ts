@@ -1,5 +1,5 @@
 import { unzipSync, zipSync } from "fflate";
-import { mergeNotebook, pageAttachments, type Notebook } from "./model";
+import { mergeNotebook, notebookAttachments, type Notebook } from "./model";
 
 const MANIFEST = "kladde-backup.json";
 
@@ -15,7 +15,7 @@ export async function createBackup(notebooks: Notebook[], getAttachment: (id: st
   const files: Record<string, Uint8Array> = {};
   const manifest: Manifest = { app: "kladde", version: 1, createdAt: now, notebooks };
   files[MANIFEST] = new TextEncoder().encode(JSON.stringify(manifest));
-  const ids = new Set(notebooks.flatMap((nb) => nb.pages.flatMap(pageAttachments)));
+  const ids = new Set(notebooks.flatMap(notebookAttachments));
   for (const id of ids) {
     const bytes = await getAttachment(id);
     // PDFs and JPEGs are already compressed.
