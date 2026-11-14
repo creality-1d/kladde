@@ -1,7 +1,6 @@
-import { type Page, type Point, type Stroke, type Template, type TextBox } from "./model";
+import { PAGE_HEIGHT, PAGE_WIDTH, type Page, type Point, type Stroke, type Template, type TextBox } from "./model";
 
-export function drawTemplate(ctx: CanvasRenderingContext2D, template: Template): void {
-  const { width, height } = ctx.canvas;
+export function drawTemplate(ctx: CanvasRenderingContext2D, template: Template, width = ctx.canvas.width, height = ctx.canvas.height): void {
   ctx.fillStyle = "#fff";
   ctx.fillRect(0, 0, width, height);
   const step = 52;
@@ -42,8 +41,30 @@ export function drawStroke(ctx: CanvasRenderingContext2D, stroke: Stroke): void 
     for (const pt of pts) ctx.lineTo(pt.x, pt.y);
     ctx.stroke();
   } else {
+    drawPenSegments(ctx, stroke, 1);
+    if (pts.length === 1) {
+      ctx.fillStyle = stroke.color;
+      ctx.beginPath();
+      ctx.arc(pts[0].x, pts[0].y, stroke.width / 2, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+  ctx.restore();
+}
+
+/**
+ * Draws pen segments from point index `from` on. While writing, only the new
+ * segments are drawn on top of the page instead of redrawing everything.
+ */
+export function drawPenSegments(ctx: CanvasRenderingContext2D, stroke: Stroke, from: number): void {
+  const pts = stroke.points;
+  ctx.save();
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+  ctx.strokeStyle = stroke.color;
+  {
     // Pen width follows pressure; midpoint quadratics smooth the polyline.
-    for (let i = 1; i < pts.length; i++) {
+    for (let i = Math.max(1, from); i < pts.length; i++) {
       const a = pts[i - 1];
       const b = pts[i];
       ctx.lineWidth = stroke.width * (0.4 + b.p * 1.2);
@@ -52,12 +73,6 @@ export function drawStroke(ctx: CanvasRenderingContext2D, stroke: Stroke): void 
       ctx.quadraticCurveTo(a.x, a.y, (a.x + b.x) / 2, (a.y + b.y) / 2);
       ctx.lineTo(b.x, b.y);
       ctx.stroke();
-    }
-    if (pts.length === 1) {
-      ctx.fillStyle = stroke.color;
-      ctx.beginPath();
-      ctx.arc(pts[0].x, pts[0].y, stroke.width / 2, 0, Math.PI * 2);
-      ctx.fill();
     }
   }
   ctx.restore();
@@ -69,16 +84,28 @@ export function renderPage(
   background?: CanvasImageSource,
   images?: ReadonlyMap<string, CanvasImageSource>,
 ): void {
-  drawTemplate(ctx, page.template);
-  if (background) ctx.drawImage(background, 0, 0, ctx.canvas.width, ctx.canvas.height);
+  // Drawn in page units; callers scale the context for thumbnails.
+  const width = page.width ?? PAGE_WIDTH;
+  const height = page.height ?? PAGE_HEIGHT;
+  drawTemplate(ctx, page.template, width, height);
+  if (background) ctx.drawImage(background, 0, 0, width, height);
   for (const image of page.images ?? []) {
     const bitmap = images?.get(image.attachment);
+    ctx.save();
+    if (image.rotation) {
+      ctx.translate(image.x + image.width / 2, image.y + image.height / 2);
+      ctx.rotate(image.rotation);
+      ctx.translate(-(image.x + image.width / 2), -(image.y + image.height / 2));
+    }
     if (bitmap) ctx.drawImage(bitmap, image.x, image.y, image.width, image.height);
     else {
       ctx.strokeStyle = "#9aa5b1";
       ctx.strokeRect(image.x, image.y, image.width, image.height);
     }
+    ctx.restore();
   }
+  // Highlighter lies under typed text and ink, like a marker on paper.
+  for (const stroke of page.strokes) if (stroke.tool === "highlighter") drawStroke(ctx, stroke);
   if (page.flow) {
     let y = page.flow.y;
     for (const paragraph of page.flow.paragraphs) {
@@ -88,7 +115,7 @@ export function renderPage(
     }
   }
   for (const text of page.texts ?? []) drawText(ctx, text);
-  for (const stroke of page.strokes) drawStroke(ctx, stroke);
+  for (const stroke of page.strokes) if (stroke.tool !== "highlighter") drawStroke(ctx, stroke);
 }
 
 export const TEXT_FONT = '"Helvetica Neue", Helvetica, Arial, sans-serif';

@@ -36,6 +36,8 @@ export interface PageImage {
   height: number;
   /** Image bytes are stored and synced as an attachment. */
   attachment: string;
+  /** Clockwise rotation in radians around the image centre. */
+  rotation?: number;
 }
 
 export interface Page {
@@ -53,6 +55,10 @@ export interface Page {
   flow?: { x: number; y: number; width: number; paragraphs: { text: string; fontSize: number; bold: boolean }[] };
   /** A PDF page drawn under the ink, referenced by attachment id. */
   background?: { attachment: string; page: number };
+  /** Marked with a bookmark in the page sidebar. */
+  bookmark?: boolean;
+  /** Entry in the notebook outline (table of contents). */
+  title?: string;
 }
 
 export interface Notebook {
@@ -63,6 +69,7 @@ export interface Notebook {
   pages: Page[];
   updatedAt: number;
   deleted?: boolean;
+  favorite?: boolean;
 }
 
 export const PAGE_WIDTH = 1404;

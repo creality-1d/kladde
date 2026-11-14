@@ -1,5 +1,5 @@
 // Page editing geometry: lasso selection, moving and deleting, shape recognition.
-import type { Page, Point } from "./model";
+import type { Page, PageImage, Point, Stroke, TextBox } from "./model";
 
 export interface Selection {
   strokes: Set<string>;
@@ -148,4 +148,124 @@ export function recognizeShape(points: readonly Point[]): Point[] | undefined {
     const a = (i / 64) * Math.PI * 2;
     return { x: cx + (w / 2) * Math.cos(a), y: cy + (h / 2) * Math.sin(a), p };
   });
+}
+
+export type EraserMode = "stroke" | "partial" | "highlighter";
+
+/** Inserts points so no two neighbours are further apart than `step`. */
+function densify(points: readonly Point[], step: number): Point[] {
+  const out: Point[] = [];
+  points.forEach((b, i) => {
+    const a = points[i - 1];
+    if (a) {
+      const n = Math.floor(dist(a, b) / step);
+      for (let k = 1; k <= n; k++) {
+        const t = k / (n + 1);
+        out.push({ x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t, p: a.p + (b.p - a.p) * t });
+      }
+    }
+    out.push(b);
+  });
+  return out;
+}
+
+/**
+ * Applies the eraser at `at`. "stroke" removes every touched stroke, "highlighter" only
+ * touched highlighter strokes, "partial" cuts the touched part out and keeps the rest
+ * as separate strokes. Returns the new stroke list, or undefined when nothing changed.
+ */
+export function eraseAt(strokes: readonly Stroke[], at: Point, radius: number, mode: EraserMode, newId: () => string): Stroke[] | undefined {
+  let changed = false;
+  const out: Stroke[] = [];
+  for (const stroke of strokes) {
+    const reach = radius + stroke.width / 2;
+    const touched = stroke.points.some((q, i) => segmentDistance(at, stroke.points[i - 1] ?? q, q) <= reach);
+    if (!touched || (mode === "highlighter" && stroke.tool !== "highlighter")) {
+      out.push(stroke);
+      continue;
+    }
+    changed = true;
+    if (mode !== "partial") continue;
+    let run: Point[] = [];
+    const flush = () => {
+      if (run.length > 1) out.push({ ...stroke, id: newId(), points: run });
+      run = [];
+    };
+    for (const q of densify(stroke.points, Math.max(1, radius / 3))) {
+      if (dist(q, at) <= reach) flush();
+      else run.push(q);
+    }
+    flush();
+  }
+  return changed ? out : undefined;
+}
+
+export function segmentDistance(p: { x: number; y: number }, a: { x: number; y: number }, b: { x: number; y: number }): number {
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const len = dx * dx + dy * dy;
+  const t = len === 0 ? 0 : Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / len));
+  return Math.hypot(p.x - (a.x + t * dx), p.y - (a.y + t * dy));
+}
+
+/** Rotates the selection by `angle` radians around `origin`. Texts keep their orientation and move with their centre. */
+export function rotateSelection(page: Page, selection: Selection, origin: { x: number; y: number }, angle: number, textHeight: (id: string) => number): void {
+  const cos = Math.cos(angle);
+  const sin = Math.sin(angle);
+  const turn = (x: number, y: number) => ({ x: origin.x + (x - origin.x) * cos - (y - origin.y) * sin, y: origin.y + (x - origin.x) * sin + (y - origin.y) * cos });
+  for (const s of page.strokes) if (selection.strokes.has(s.id)) s.points = s.points.map((p) => ({ ...p, ...turn(p.x, p.y) }));
+  for (const t of page.texts ?? []) {
+    if (!selection.texts.has(t.id)) continue;
+    const h = textHeight(t.id);
+    const c = turn(t.x + t.width / 2, t.y + h / 2);
+    Object.assign(t, { x: c.x - t.width / 2, y: c.y - h / 2 });
+  }
+  for (const i of page.images ?? []) {
+    if (!selection.images.has(i.id)) continue;
+    const c = turn(i.x + i.width / 2, i.y + i.height / 2);
+    Object.assign(i, { x: c.x - i.width / 2, y: c.y - i.height / 2, rotation: (i.rotation ?? 0) + angle });
+  }
+}
+
+export function recolorSelection(page: Page, selection: Selection, color: string): void {
+  for (const s of page.strokes) if (selection.strokes.has(s.id)) s.color = color;
+  for (const t of page.texts ?? []) if (selection.texts.has(t.id)) t.color = color;
+}
+
+/** Copied page content, independent of the page it came from. */
+export interface Clip {
+  strokes: Stroke[];
+  texts: TextBox[];
+  images: PageImage[];
+}
+
+export function copySelection(page: Page, selection: Selection): Clip {
+  return structuredClone({
+    strokes: page.strokes.filter((s) => selection.strokes.has(s.id)),
+    texts: (page.texts ?? []).filter((t) => selection.texts.has(t.id)),
+    images: (page.images ?? []).filter((i) => selection.images.has(i.id)),
+  });
+}
+
+/** Adds a copy of the clip to the page, shifted by (dx, dy), and returns the selection of the new elements. */
+export function pasteClip(page: Page, clip: Clip, dx: number, dy: number, newId: () => string): Selection {
+  const copy = structuredClone(clip);
+  const selection: Selection = { strokes: new Set(), texts: new Set(), images: new Set() };
+  for (const s of copy.strokes) {
+    s.id = newId();
+    s.points = s.points.map((p) => ({ ...p, x: p.x + dx, y: p.y + dy }));
+    page.strokes.push(s);
+    selection.strokes.add(s.id);
+  }
+  for (const t of copy.texts) {
+    Object.assign(t, { id: newId(), x: t.x + dx, y: t.y + dy });
+    (page.texts ??= []).push(t);
+    selection.texts.add(t.id);
+  }
+  for (const i of copy.images) {
+    Object.assign(i, { id: newId(), x: i.x + dx, y: i.y + dy });
+    (page.images ??= []).push(i);
+    selection.images.add(i.id);
+  }
+  return selection;
 }

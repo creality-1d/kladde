@@ -6,18 +6,36 @@ Kladde ist eine eigenständige App. Sie enthält keinen Code und keine Gestaltun
 
 ## Funktionen
 
-- Notizbücher mit Seitenvorlagen (liniert, kariert, gepunktet, blanko) und beliebigen Seitengrößen
-- Stift mit Druckempfindlichkeit (Apple Pencil, S Pen, Grafiktabletts), Textmarker, Radierer
-- Form-Werkzeug: gezeichnete Linien, Rechtecke und Ellipsen werden begradigt
-- Lasso: Striche, Texte und Bilder auswählen, verschieben, löschen und über den Eckgriff vergrößern oder verkleinern
-- Rückgängig/Wiederholen (Strg+Z / Strg+Y), Zoom (Knöpfe, Strg+Mausrad, Zwei-Finger-Pinch)
-- Bilder einfügen
-- Ordner und Suche (Titel, Ordner, getippter Text)
-- Handballenerkennung: Während der Stift schreibt, werden Fingerberührungen ignoriert. Sobald einmal mit dem Stift geschrieben wurde, scrollt ein Finger, statt zu zeichnen
-- Textfelder
-- PDF als Seitenhintergrund (importierte Goodnotes-Arbeitsblätter, Papiervorlagen)
-- Export als PDF über den Druckdialog
-- Import von Goodnotes-6-Dateien: Handschrift, Formen, Textmarker, getippter Text, Textfelder, PDF-Hintergründe
+Kladde ist so aufgebaut, dass man von Goodnotes ohne Umgewöhnung weiterarbeiten kann: dieselbe Anordnung (Bibliothek mit Deckblättern, Werkzeugleiste oben, Farben und Stärken rechts, Seitenübersicht links) und dieselben Gesten. Icons und Gestaltung sind eigene. Ein Vergleich mit Goodnotes 6 steht in [docs/goodnotes-vergleich.md](docs/goodnotes-vergleich.md).
+
+**Schreiben**
+- Stift mit Druckempfindlichkeit (Apple Pencil, S Pen, Grafiktabletts), Textmarker, Radierer, Formen, Lasso, Bild, Text
+- Drei Lieblingsfarben und drei Strichstärken pro Werkzeug; nochmal tippen ändert Farbe oder Stärke
+- Strich am Ende kurz halten: wird zur geraden Linie, zum Rechteck oder zur Ellipse (Form-Werkzeug begradigt immer)
+- Textmarker liegt unter Schrift und Tinte
+- Radierer in drei Größen: ganze Striche, teilweise oder nur Textmarker
+- Lasso: verschieben, Größe ändern (Eckgriff), drehen (Kreisgriff), kopieren, ausschneiden, einfügen, duplizieren, umfärben, löschen
+- Textfelder direkt auf der Seite tippen und bearbeiten
+- Bilder einfügen; ein neues Bild ist gleich ausgewählt
+
+**Gesten**
+- Mit zwei Fingern tippen: rückgängig; mit drei Fingern: wiederholen (auch Strg+Z / Strg+Y)
+- Apple Pencil doppelt antippen: Radierer, vorheriges Werkzeug oder Farbe, wie in den iPad-Einstellungen
+- Handballenerkennung; „Nur Stift zeichnet“ (automatisch, sobald ein Stift benutzt wurde, oder fest), Finger scrollen mit Schwung
+- Zwei-Finger-Pinch zoomt, Strg+Mausrad am Rechner
+
+**Notizbücher**
+- Seiten untereinander scrollen oder nebeneinander blättern
+- Seitenübersicht mit Miniaturen: Seiten einfügen (davor/danach), duplizieren, verschieben (ziehen oder Menü), löschen, Papier ändern
+- Neue Seiten übernehmen Papier und Format der aktuellen Seite
+- Lesezeichen und Gliederung
+- Mehrere Notizbücher als Tabs
+- Bibliothek mit Deckblättern, Ordnern, „Zuletzt“, Favoriten und Suche (Titel, Ordner, getippter Text, Gliederung)
+- Papier liniert, kariert, gepunktet, blanko; A4 hoch oder quer
+
+**Import, Export, Sync**
+- Import von Goodnotes-6-Dateien (Handschrift, Formen, Textmarker, getippter Text, Textfelder, PDF-Hintergründe), auch viele auf einmal oder als ZIP mit Ordnern; PDFs werden zu Notizbüchern
+- Export als echte PDF-Datei über das Teilen-Menü, alternativ Drucken
 - Nextcloud-Sync über WebDAV mit App-Passwort; Notizbücher und PDF-Anhänge. Synchronisiert beim Start, 20 Sekunden nach der letzten Änderung und beim Wechsel in den Hintergrund
 - Offline nutzbar; Daten liegen lokal auf dem Gerät
 
@@ -63,6 +81,7 @@ GOODNOTES_SAMPLES=test-samples npm test   # zusätzlich eigene .goodnotes-Dateie
 
 Ehrlich gesagt deckt Kladde nicht alles ab, was Goodnotes 6 kann:
 
-- **Nicht vorhanden:** KI-Funktionen (Goodnotes nutzt dafür eigene Cloud-Modelle), Handschrifterkennung und Suche in Handschrift, Live-Zusammenarbeit, Marketplace, Audioaufnahmen, Sticker, Lesezeichen, Präsentationsmodus, Drehen einer Auswahl.
+- **Nicht vorhanden:** KI-Funktionen (Goodnotes nutzt dafür eigene Cloud-Modelle), Handschrifterkennung und Suche in Handschrift, Live-Zusammenarbeit, Marketplace, Audioaufnahmen, Sticker, Präsentationsmodus, Lineal, Zoom-Lupe, Deckblatt-Auswahl, verschiedene Stiftarten (Füller, Kugelschreiber, Pinsel).
+- **Lasso:** Textfelder drehen nicht mit, sie verschieben sich nur mit der Auswahl.
 - **Goodnotes-Import:** Formatwechsel innerhalb eines Absatzes werden vereinfacht, Zeilenumbrüche können leicht abweichen; Bilder und andere Elementarten waren in den Beispieldateien nicht enthalten und werden noch nicht übernommen. Es gibt keinen Export zurück ins Goodnotes-Format.
 - **Sync:** gleichzeitige Bearbeitung derselben Seite auf zwei Geräten wird nicht zusammengeführt; die zuletzt geänderte Fassung gewinnt.
