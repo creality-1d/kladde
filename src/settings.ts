@@ -2,6 +2,7 @@
 // tool and gesture settings of most note apps.
 import type { EraserMode } from "./edit";
 import type { PenType } from "./model";
+import type { PenTuning } from "./pentune";
 
 export type PresetTool = "pen" | "highlighter" | "shape" | "text";
 
@@ -16,6 +17,12 @@ export interface Settings {
   presets: Record<PresetTool, ToolPreset>;
   eraser: { mode: EraserMode; sizes: [number, number, number]; size: number };
   penType: PenType;
+  /** Fine settings per pen type (tip sharpness, pressure sensitivity, stabilisation). */
+  penTuning: Record<PenType, PenTuning>;
+  /** Highlighter strokes become straight lines. */
+  highlighterStraight: boolean;
+  /** Where the tool settings panel was dragged to (client px), if moved. */
+  toolPanel?: { x: number; y: number };
   /** Scribbling over ink with the pen erases it. */
   scribbleErase: boolean;
   /** Magnification of the zoom window relative to the page width. */
@@ -47,6 +54,13 @@ export const DEFAULTS: Settings = {
   },
   eraser: { mode: "stroke", sizes: [10, 20, 40], size: 1 },
   penType: "fountain",
+  penTuning: {
+    fountain: { sharpness: 50, pressure: 50, stabilization: 20 },
+    ball: { sharpness: 0, pressure: 0, stabilization: 20 },
+    brush: { sharpness: 60, pressure: 70, stabilization: 20 },
+  },
+  highlighterStraight: false,
+  toolPanel: undefined,
   scribbleErase: true,
   zoomWindow: 2.5,
   penOnly: "auto",
@@ -72,6 +86,9 @@ export function withDefaults(raw: Partial<Settings> | undefined): Settings {
     if (key === "presets") {
       for (const tool of Object.keys(s.presets) as PresetTool[]) Object.assign(s.presets[tool], raw.presets?.[tool]);
     } else if (key === "eraser") Object.assign(s.eraser, raw.eraser);
+    else if (key === "penTuning") {
+      for (const pen of Object.keys(s.penTuning) as PenType[]) Object.assign(s.penTuning[pen], raw.penTuning?.[pen]);
+    }
     else (s as unknown as Record<string, unknown>)[key] = raw[key];
   }
   return s;

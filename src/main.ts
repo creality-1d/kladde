@@ -18,6 +18,7 @@ import {
   type Box,
   type Clip,
   type Selection,
+  type EraserMode,
 } from "./edit";
 import { importGoodnotes } from "./goodnotes/import";
 import { icons, type IconName } from "./icons";
@@ -25,6 +26,7 @@ import { drawPenSegments, drawStroke, renderPage, textHeight } from "./ink";
 import { newId, newNotebook, PAGE_HEIGHT, PAGE_WIDTH, pageAttachments, visiblePages, type Notebook, type Page, type Point, type Stroke, type PaperColor, type PenType, type Template, type TextBox, type Tool, type Recording } from "./model";
 import { duplicatePage, insertPage, insertPageAt, movePage, pageLike } from "./pages";
 import { pdfPageSizes, pdfPageText, renderPdfPage } from "./pdf";
+import { stabilize, straighten, taper, tunePressure } from "./pentune";
 import { inkKey, pageRuns, pdfKey, searchNotebook, type IndexEntry, type PageHit, type TextRun } from "./search";
 import { writePdf } from "./pdfwrite";
 import { loadSettings, saveSettings, type PresetTool } from "./settings";
@@ -608,8 +610,9 @@ const observer = new IntersectionObserver(
       const sheet = sheets.find((s) => s.el === entry.target);
       if (!sheet) continue;
       sheet.live = entry.isIntersecting;
-      if (sheet.live) renderSheet(sheet);
+      if (sheet.live) queueRender(sheet);
       else {
+        renderQueue.delete(sheet);
         // Off-screen pages give their bitmap memory back.
         sheet.canvas.width = sheet.canvas.height = 1;
         sheet.overlay.width = sheet.overlay.height = 1;
@@ -618,6 +621,36 @@ const observer = new IntersectionObserver(
   },
   { root: stage, rootMargin: "120% 120%" },
 );
+
+/**
+ * Pages coming into view are drawn a few per frame, nearest first, so fast
+ * scrolling and the end of a pinch never stall on drawing many pages at once.
+ */
+const renderQueue = new Set<Sheet>();
+let renderFrame = 0;
+function queueRender(s: Sheet): void {
+  renderQueue.add(s);
+  if (!renderFrame) renderFrame = requestAnimationFrame(drainRenders);
+}
+function drainRenders(): void {
+  renderFrame = 0;
+  const view = stage.getBoundingClientRect();
+  const cx = view.left + view.width / 2;
+  const cy = view.top + view.height / 2;
+  const distance = (s: Sheet) => {
+    const r = s.el.getBoundingClientRect();
+    return Math.hypot(Math.max(r.left - cx, 0, cx - r.right), Math.max(r.top - cy, 0, cy - r.bottom));
+  };
+  const order = [...renderQueue].sort((a, b) => distance(a) - distance(b));
+  const started = performance.now();
+  for (const s of order) {
+    // Always at least one page per frame; more only while the frame has time left.
+    if (performance.now() - started > 6 && renderQueue.size < order.length) break;
+    renderQueue.delete(s);
+    renderSheet(s);
+  }
+  if (renderQueue.size) renderFrame = requestAnimationFrame(drainRenders);
+}
 
 function openNotebook(nb: Notebook): void {
   finishTextEdit();
@@ -673,14 +706,20 @@ function layoutSheets(): void {
     const ratio = pageW(s.page) / pageH(s.page);
     // Vertical: fit the width (at most 1000 px). Horizontal: fit the whole page.
     const fit = settings.scroll === "horizontal" ? Math.min(width, height * ratio) : Math.min(1000, width);
-    s.el.style.width = `${Math.max(120, Math.round(fit * zoom))}px`;
+    const w = Math.max(120, Math.round(fit * zoom));
+    s.el.style.width = `${w}px`;
+    // Side by side: every page gets a slot as wide as the screen, so exactly
+    // one page is in view. Zoomed in, pages keep a gap instead.
+    s.el.style.marginInline = settings.scroll === "horizontal" ? `${Math.max(24, (stage.clientWidth - w) / 2)}px` : "";
   }
   refreshResolution();
   const add = pagesEl.lastElementChild as HTMLElement | null;
   const last = sheets[sheets.length - 1];
   if (add && last) {
-    add.style.width = settings.scroll === "horizontal" ? "160px" : last.el.style.width;
-    add.style.height = settings.scroll === "horizontal" ? last.el.getBoundingClientRect().height + "px" : "120px";
+    const horizontal = settings.scroll === "horizontal";
+    add.style.width = horizontal ? "160px" : last.el.style.width;
+    add.style.height = horizontal ? last.el.getBoundingClientRect().height + "px" : "120px";
+    add.style.marginInline = horizontal ? `${Math.max(24, (stage.clientWidth - 160) / 2)}px` : "";
   }
 }
 
@@ -764,13 +803,14 @@ let highlightTimer: ReturnType<typeof setTimeout> | undefined;
 function refreshResolution(): void {
   clearTimeout(resTimer);
   resTimer = setTimeout(() => {
-    if (gesture) return refreshResolution();
-    for (const s of sheets) if (s.live && sheetRes(s) !== s.res) renderSheet(s);
+    if (gesture || pinch) return refreshResolution();
+    for (const s of sheets) if (s.live && sheetRes(s) !== s.res) queueRender(s);
   }, 180);
 }
 
 function renderSheet(s: Sheet): void {
   if (!s.live) return;
+  renderQueue.delete(s);
   const p = s.page;
   s.res = sheetRes(s);
   const w = Math.round(pageW(p));
@@ -931,7 +971,16 @@ function setTool(next: Tool): void {
   document.querySelectorAll<HTMLButtonElement>("[data-tool]").forEach((b) => b.classList.toggle("active", b.dataset.tool === tool));
   renderContext();
 }
-document.querySelectorAll<HTMLButtonElement>("[data-tool]").forEach((button) => (button.onclick = () => setTool(button.dataset.tool as Tool)));
+document.querySelectorAll<HTMLButtonElement>("[data-tool]").forEach(
+  (button) =>
+    (button.onclick = () => {
+      const next = button.dataset.tool as Tool;
+      // As in Goodnotes: tapping the active tool again opens its settings.
+      if (next === tool && TUNABLE.includes(next)) return toggleToolPanel();
+      setTool(next);
+      if (!$("tool-panel").hidden) renderToolPanel();
+    }),
+);
 
 const colorInput = $<HTMLInputElement>("color-input");
 function pickColor(initial: string, done: (color: string) => void): void {
@@ -1211,15 +1260,24 @@ function updatePinch(): void {
   // The page point that was under the fingers follows their midpoint (zoom and pan together).
   const tx = mid.x - pinch.mid.x + pinch.origin.x * (1 - scale);
   const ty = mid.y - pinch.mid.y + pinch.origin.y * (1 - scale);
-  pagesEl.style.transform = `translate(${tx}px, ${ty}px) scale(${scale})`;
   pinch.scale = scale;
   pinch.at = mid;
+  pinchTransform = `translate(${tx}px, ${ty}px) scale(${scale})`;
+  if (!pinchFrame)
+    pinchFrame = requestAnimationFrame(() => {
+      pinchFrame = 0;
+      if (pinch) pagesEl.style.transform = pinchTransform;
+    });
 }
+let pinchFrame = 0;
+let pinchTransform = "";
 /** Applies the pinched zoom for real: one layout, one sharp render. */
 function endPinch(): void {
   const p = pinch;
   if (!p) return;
   pinch = undefined;
+  cancelAnimationFrame(pinchFrame);
+  pinchFrame = 0;
   pagesEl.style.transform = "";
   pagesEl.style.willChange = "";
   zoom = clampZoomLevel(p.zoom * p.scale);
@@ -1373,7 +1431,7 @@ pagesEl.addEventListener("pointerdown", (event) => {
       tool: tool === "highlighter" ? "highlighter" : "pen",
       color: currentColor(t),
       width: currentWidth(t),
-      points: [at],
+      points: [tool === "pen" ? { ...at, p: tunePressure(at.p, settings.penTuning[settings.penType].pressure) } : at],
       pen: tool === "pen" ? settings.penType : tool === "shape" ? "ball" : undefined,
     },
   };
@@ -1396,8 +1454,9 @@ pagesEl.addEventListener("pointermove", (event) => {
     // device pixels and add up to scrolling faster than the finger.
     stage.scrollTo(g.scroll.left + g.start.x - now.x, g.scroll.top + g.start.y - now.y);
     g.last = now;
-    g.track.push({ ...now, t: event.timeStamp });
-    if (g.track.length > 12) g.track.shift();
+    for (const e of event.getCoalescedEvents?.() ?? [event]) g.track.push({ x: e.clientX, y: e.clientY, t: e.timeStamp });
+    if (!event.getCoalescedEvents?.().length) g.track.push({ ...now, t: event.timeStamp });
+    while (g.track.length > 2 && event.timeStamp - g.track[0].t > 150) g.track.shift();
     return;
   }
   const events = event.getCoalescedEvents?.() ?? [event];
@@ -1437,7 +1496,15 @@ pagesEl.addEventListener("pointermove", (event) => {
     return renderSheet(g.sheet);
   }
   if (g.kind !== "draw" || g.snapped) return;
-  g.stroke.points.push(...points);
+  if (tool === "pen" && g.rulerEdge === undefined) {
+    // Fine pen settings: pressure response and smoothing of small shakes.
+    const tuning = settings.penTuning[settings.penType];
+    let prev = g.stroke.points[g.stroke.points.length - 1];
+    for (const q of points) {
+      prev = stabilize(prev, { ...q, p: tunePressure(q.p, tuning.pressure) }, tuning.stabilization);
+      g.stroke.points.push(prev);
+    }
+  } else g.stroke.points.push(...points);
   armHold(at);
   if (g.stroke.tool === "pen") {
     drawPenSegments(g.sheet.ctx, g.stroke, Math.max(1, g.drawn));
@@ -1492,6 +1559,8 @@ const finish = (event: PointerEvent) => {
       if (end.x !== last.x || end.y !== last.y) g.stroke.points.push({ ...end, p: last.p });
     }
     if (tool === "shape" && !g.snapped) g.stroke.points = recognizeShape(g.stroke.points) ?? g.stroke.points;
+    if (tool === "pen" && !g.snapped && settings.penType !== "ball") g.stroke.points = taper(g.stroke.points, settings.penTuning[settings.penType].sharpness);
+    if (tool === "highlighter" && settings.highlighterStraight && !g.snapped) g.stroke.points = straighten(g.stroke.points);
     const scribbled = tool === "pen" && settings.scribbleErase && !g.snapped && g.rulerEdge === undefined ? scribbleTargets(g.stroke.points, p.strokes) : undefined;
     checkpoint(p);
     if (scribbled) {
@@ -1508,44 +1577,86 @@ pagesEl.addEventListener("pointercancel", finish);
 
 // Finger scrolling keeps moving briefly after release, like native scrolling.
 let inertiaFrame = 0;
+/** Velocity of a fling still running (px/ms), so a quick follow-up flick can add to it. */
+let coasting = { vx: 0, vy: 0, at: 0 };
 function stopInertia(): void {
   cancelAnimationFrame(inertiaFrame);
   inertiaFrame = 0;
 }
-const MAX_FLING = 5; // px per ms
+const MAX_FLING = 12; // px per ms
+/** iOS's normal deceleration: velocity keeps 99.8 % per millisecond. */
+const DECELERATION = 0.998;
+
+/** Finger velocity (px/ms) as a least-squares fit over the last 100 ms. */
+function flingVelocity(track: { x: number; y: number; t: number }[]): { vx: number; vy: number } {
+  const end = track[track.length - 1];
+  const recent = track.filter((q) => end.t - q.t <= 100);
+  if (recent.length < 2 || end.t - recent[0].t < 8) return { vx: 0, vy: 0 };
+  const n = recent.length;
+  const mt = recent.reduce((s, q) => s + q.t, 0) / n;
+  const mx = recent.reduce((s, q) => s + q.x, 0) / n;
+  const my = recent.reduce((s, q) => s + q.y, 0) / n;
+  let tt = 0;
+  let tx = 0;
+  let ty = 0;
+  for (const q of recent) {
+    tt += (q.t - mt) ** 2;
+    tx += (q.t - mt) * (q.x - mx);
+    ty += (q.t - mt) * (q.y - my);
+  }
+  return tt ? { vx: tx / tt, vy: ty / tt } : { vx: 0, vy: 0 };
+}
+
 function startInertia(track: { x: number; y: number; t: number }[], releasedAt: number): void {
   const b = track[track.length - 1];
-  // Only the movement just before lifting counts: a finger that stopped (no
-  // move events while it rests) and then lifts must not fling the page.
-  const recent = track.filter((q) => b.t - q.t <= 80);
-  const a = recent[0];
-  const dt = b.t - a.t;
-  if (dt < 8 || releasedAt - b.t > 50) return snapHorizontal();
-  let vx = (a.x - b.x) / dt;
-  let vy = (a.y - b.y) / dt;
+  // A finger that rested before lifting (no move events while still) must not fling.
+  if (releasedAt - b.t > 50) return snapHorizontal();
+  const finger = flingVelocity(track);
+  // Scrolling moves opposite to the finger.
+  let vx = -finger.vx;
+  let vy = -finger.vy;
   const speed = Math.hypot(vx, vy);
   // Slow, careful scrolling stops where the finger left it.
-  if (speed < 0.25) return snapHorizontal();
-  if (speed > MAX_FLING) {
-    vx *= MAX_FLING / speed;
-    vy *= MAX_FLING / speed;
+  if (speed < 0.2) return snapHorizontal();
+  // Flicking again while the page still coasts the same way speeds it up, as on iOS.
+  if (performance.now() - coasting.at < 400 && Math.sign(coasting.vy) === Math.sign(vy) && Math.abs(vy) > 1) {
+    vx += coasting.vx * 0.6;
+    vy += coasting.vy * 0.6;
+  }
+  const capped = Math.hypot(vx, vy);
+  if (capped > MAX_FLING) {
+    vx *= MAX_FLING / capped;
+    vy *= MAX_FLING / capped;
   }
   let last = performance.now();
   // Track the position as a float for the same reason as in panning.
   let left = stage.scrollLeft;
   let top = stage.scrollTop;
   const step = (now: number) => {
-    const ms = now - last;
+    const ms = Math.min(50, now - last);
     last = now;
-    left += vx * ms;
-    top += vy * ms;
-    stage.scrollTo(left, top);
-    const decay = Math.pow(0.995, ms);
+    // Exact integral of the exponential slowdown over this frame.
+    const decay = Math.pow(DECELERATION, ms);
+    const travel = (1 - decay) / (1 - DECELERATION);
+    left += vx * travel;
+    top += vy * travel;
     vx *= decay;
     vy *= decay;
-    if (Math.hypot(vx, vy) > 0.02) inertiaFrame = requestAnimationFrame(step);
+    stage.scrollTo(left, top);
+    // At the start or end of the notebook the page stops instead of pushing on.
+    if (Math.abs(stage.scrollTop - top) > 2) {
+      top = stage.scrollTop;
+      vy = 0;
+    }
+    if (Math.abs(stage.scrollLeft - left) > 2) {
+      left = stage.scrollLeft;
+      vx = 0;
+    }
+    coasting = { vx, vy, at: now };
+    if (Math.hypot(vx, vy) > 0.01) inertiaFrame = requestAnimationFrame(step);
     else {
       inertiaFrame = 0;
+      coasting = { vx: 0, vy: 0, at: 0 };
       snapHorizontal();
     }
   };
@@ -2913,6 +3024,161 @@ function renderRecordings(): void {
       }),
   );
 }
+
+// ---------------------------------------------------------------------------
+// Tool settings panel: tap the active tool again. Can be dragged anywhere.
+
+const TUNABLE: Tool[] = ["pen", "highlighter", "eraser", "shape"];
+const toolPanel = $("tool-panel");
+function toggleToolPanel(): void {
+  if (!toolPanel.hidden) return closeToolPanel();
+  toolPanel.hidden = false;
+  renderToolPanel();
+  placeToolPanel();
+}
+function closeToolPanel(): void {
+  toolPanel.hidden = true;
+}
+function placeToolPanel(): void {
+  const ws = $("workspace").getBoundingClientRect();
+  const w = toolPanel.offsetWidth;
+  const hgt = toolPanel.offsetHeight;
+  const button = document.querySelector<HTMLElement>(`[data-tool="${tool}"]`)?.getBoundingClientRect();
+  const want = settings.toolPanel ?? { x: (button ? button.left + button.width / 2 : ws.left + 200) - w / 2, y: ws.top + 8 };
+  // Stay on screen, also after rotating the iPad.
+  const x = Math.min(Math.max(ws.left + 8, want.x), ws.right - w - 8);
+  const y = Math.min(Math.max(ws.top + 8, want.y), ws.bottom - hgt - 8);
+  toolPanel.style.left = `${x - ws.left}px`;
+  toolPanel.style.top = `${y - ws.top}px`;
+}
+function slider(label: string, value: number, min: number, max: number, step: number, unit: string, change: (v: number) => void): HTMLElement {
+  const out = h("output", {}, `${value}${unit}`);
+  const input = h("input", { type: "range", min: String(min), max: String(max), step: String(step), value: String(value) }) as HTMLInputElement;
+  input.oninput = () => {
+    out.textContent = `${input.value}${unit}`;
+    change(Number(input.value));
+  };
+  input.onchange = () => saveSettingsNow();
+  return h("label", { class: "slider" }, h("span", {}, label, out), input);
+}
+function renderToolPanel(): void {
+  if (toolPanel.hidden) return;
+  const rows: HTMLElement[] = [];
+  const t = presetTool();
+  const titles: Partial<Record<Tool, string>> = { pen: "Stift", highlighter: "Textmarker", eraser: "Radierer", shape: "Formen" };
+  if (tool === "pen") {
+    const labels: Record<PenType, string> = { fountain: "Füller", ball: "Kugelschreiber", brush: "Pinsel" };
+    const seg = h("div", { class: "segmented" });
+    for (const pen of Object.keys(labels) as PenType[]) {
+      const b = h("button", { class: pen === settings.penType ? "active" : "" }, labels[pen]);
+      b.onclick = () => {
+        settings.penType = pen;
+        saveSettingsNow();
+        renderContext();
+        renderToolPanel();
+      };
+      seg.append(b);
+    }
+    rows.push(seg);
+  }
+  if (t) {
+    const preset = settings.presets[t];
+    rows.push(
+      slider("Stärke", preset.widths[preset.width], 0.5, t === "highlighter" ? 16 : 12, 0.5, "", (v) => {
+        preset.widths[preset.width] = v;
+        renderContext();
+      }),
+    );
+  }
+  if (tool === "pen") {
+    const tuning = settings.penTuning[settings.penType];
+    if (settings.penType !== "ball") {
+      rows.push(slider("Spitzenschärfe", tuning.sharpness, 0, 100, 5, " %", (v) => (tuning.sharpness = v)));
+      rows.push(slider("Druckempfindlichkeit", tuning.pressure, 0, 100, 5, " %", (v) => (tuning.pressure = v)));
+    } else rows.push(h("p", { class: "hint" }, "Der Kugelschreiber schreibt gleichmäßig, unabhängig vom Druck."));
+    rows.push(slider("Strichstabilisierung", tuning.stabilization, 0, 100, 5, " %", (v) => (tuning.stabilization = v)));
+    const preview = h("canvas", { class: "pen-preview", width: "560", height: "120" }) as HTMLCanvasElement;
+    rows.push(preview);
+    drawPenPreview(preview);
+    toolPanel.oninput = () => drawPenPreview(preview);
+  } else toolPanel.oninput = null;
+  if (tool === "highlighter") {
+    const straight = h("input", { type: "checkbox" }) as HTMLInputElement;
+    straight.checked = settings.highlighterStraight;
+    straight.onchange = () => {
+      settings.highlighterStraight = straight.checked;
+      saveSettingsNow();
+    };
+    rows.push(h("label", { class: "check" }, straight, "Gerade Linien ziehen"));
+  }
+  if (tool === "eraser") {
+    const modes: [EraserMode, string][] = [
+      ["stroke", "Ganze Striche"],
+      ["partial", "Teilweise"],
+      ["highlighter", "Nur Textmarker"],
+    ];
+    const seg = h("div", { class: "segmented" });
+    for (const [mode, label] of modes) {
+      const b = h("button", { class: mode === settings.eraser.mode ? "active" : "" }, label);
+      b.onclick = () => {
+        settings.eraser.mode = mode;
+        saveSettingsNow();
+        renderContext();
+        renderToolPanel();
+      };
+      seg.append(b);
+    }
+    rows.push(seg);
+    rows.push(slider("Größe", settings.eraser.sizes[settings.eraser.size], 4, 80, 2, "", (v) => {
+      settings.eraser.sizes[settings.eraser.size] = v;
+      renderContext();
+    }));
+    const scribble = h("input", { type: "checkbox" }) as HTMLInputElement;
+    scribble.checked = settings.scribbleErase;
+    scribble.onchange = () => {
+      settings.scribbleErase = scribble.checked;
+      saveSettingsNow();
+    };
+    rows.push(h("label", { class: "check" }, scribble, "Wegkritzeln mit dem Stift radiert"));
+  }
+  if (tool === "shape") {
+    const hold = h("input", { type: "checkbox" }) as HTMLInputElement;
+    hold.checked = settings.holdToShape;
+    hold.onchange = () => {
+      settings.holdToShape = hold.checked;
+      saveSettingsNow();
+    };
+    rows.push(h("label", { class: "check" }, hold, "Auch mit dem Stift: am Ende halten wird zur Form"));
+  }
+  const grip = h("div", { class: "grip", title: "Ziehen zum Verschieben" }, h("i"), h("b", {}, titles[tool] ?? ""));
+  const close = iconButton("close", "Schließen", closeToolPanel);
+  toolPanel.replaceChildren(h("div", { class: "panel-head" }, grip, close), ...rows);
+  grip.onpointerdown = (event) => {
+    event.preventDefault();
+    grip.setPointerCapture(event.pointerId);
+    const start = { x: event.clientX, y: event.clientY };
+    const box = toolPanel.getBoundingClientRect();
+    grip.onpointermove = (e) => {
+      settings.toolPanel = { x: box.left + e.clientX - start.x, y: box.top + e.clientY - start.y };
+      placeToolPanel();
+    };
+    grip.onpointerup = grip.onpointercancel = () => {
+      grip.onpointermove = null;
+      saveSettingsNow();
+    };
+  };
+}
+/** A sample stroke with the current pen settings, light to heavy pressure. */
+function drawPenPreview(c: HTMLCanvasElement): void {
+  const ctx = c.getContext("2d")!;
+  ctx.clearRect(0, 0, c.width, c.height);
+  const tuning = settings.penTuning[settings.penType];
+  let points = Array.from({ length: 60 }, (_, i) => ({ x: 30 + i * 8.5, y: 60 + Math.sin(i / 4) * 30, p: tunePressure(0.15 + (i / 60) * 0.8, tuning.pressure) }));
+  if (settings.penType !== "ball") points = taper(points, tuning.sharpness);
+  const preset = settings.presets.pen;
+  drawStroke(ctx, { id: "preview", tool: "pen", color: getComputedStyle(document.body).getPropertyValue("--text").trim() || "#000", width: preset.widths[preset.width] * 2, points, pen: settings.penType });
+}
+window.addEventListener("resize", () => !toolPanel.hidden && placeToolPanel());
 
 // Debug and test hook: exposes state for automated UI tests.
 (window as unknown as { kladde: unknown }).kladde = {
