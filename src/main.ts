@@ -23,8 +23,9 @@ import {
 import { importGoodnotes } from "./goodnotes/import";
 import { icons, type IconName } from "./icons";
 import { drawPenSegments, drawStroke, renderPage, textHeight } from "./ink";
-import { newId, newNotebook, PAGE_HEIGHT, PAGE_WIDTH, pageAttachments, visiblePages, type Notebook, type Page, type Point, type Stroke, type PaperColor, type PenType, type Template, type TextBox, type Tool, type Recording } from "./model";
-import { duplicatePage, insertPage, insertPageAt, movePage, pageLike } from "./pages";
+import { kindOf, newId, newNotebook, newTextDocument, newWhiteboard, PAGE_HEIGHT, PAGE_WIDTH, pageAttachments, visiblePages, type Notebook, type Page, type Point, type Stroke, type PaperColor, type PenType, type Template, type TextBox, type Tool, type Recording } from "./model";
+import { duplicatePage, growWhiteboard, insertPage, insertPageAt, movePage, pageLike } from "./pages";
+import { plainText, renderTextPages, sanitizeHtml } from "./textdoc";
 import { pdfPageSizes, pdfPageText, renderPdfPage } from "./pdf";
 import { stabilize, straighten, taper, tunePressure } from "./pentune";
 import { inkKey, pageRuns, pdfKey, searchNotebook, type IndexEntry, type PageHit, type TextRun } from "./search";
@@ -181,11 +182,13 @@ function restore(from: Snapshot[], to: Snapshot[]): void {
   if (index >= 0 && !sheetVisible(index)) scrollToPage(index);
   updateUndoButtons();
 }
-const undo = () => restore(undoStack, redoStack);
-const redo = () => restore(redoStack, undoStack);
+const isTextDoc = () => !!current && kindOf(current) === "text";
+const undo = () => (isTextDoc() ? void document.execCommand("undo") : restore(undoStack, redoStack));
+const redo = () => (isTextDoc() ? void document.execCommand("redo") : restore(redoStack, undoStack));
 function updateUndoButtons(): void {
-  $<HTMLButtonElement>("undo").disabled = undoStack.length === 0;
-  $<HTMLButtonElement>("redo").disabled = redoStack.length === 0;
+  const text = isTextDoc();
+  $<HTMLButtonElement>("undo").disabled = !text && undoStack.length === 0;
+  $<HTMLButtonElement>("redo").disabled = !text && redoStack.length === 0;
 }
 
 /** Marks a page (or just the notebook) as changed: saves, schedules sync and redraws. */
@@ -260,6 +263,7 @@ function matches(nb: Notebook): boolean {
   if (!query) return true;
   const q = query.toLowerCase();
   if (nb.title.toLowerCase().includes(q) || (nb.folder ?? "").toLowerCase().includes(q)) return true;
+  if (nb.doc && plainText(nb.doc.html).toLowerCase().includes(q)) return true;
   return searchNotebook(nb, query, textIndex).length > 0;
 }
 const liveNotebooks = () => notebooks.filter((nb) => !nb.deleted);
@@ -357,7 +361,10 @@ function folderTile(path: string, name: string): HTMLElement {
 function notebookTile(nb: Notebook): HTMLElement {
   const first = visiblePages(nb)[0];
   const cover = h("div", { class: "cover" + (nb.cover ? " colored" : "") });
-  if (nb.cover) {
+  if (kindOf(nb) === "text") {
+    cover.classList.add("textcover");
+    cover.append(h("b", {}, nb.title || "Ohne Titel"), plainText(nb.doc?.html ?? "").slice(0, 320));
+  } else if (nb.cover) {
     cover.style.background = nb.cover;
     cover.append(h("span", {}, nb.title));
   } else if (first) void thumbnail(first, 300).then((url) => cover.replaceChildren(h("img", { src: url, alt: "" })));
@@ -371,6 +378,7 @@ function notebookTile(nb: Notebook): HTMLElement {
     h("div", { class: "meta" }, (nb.deleted ? "Gelöscht " : "") + formatDate(nb.updatedAt)),
   );
   if (nb.favorite) tile.append(h("span", { class: "fav", html: icons.starOn }));
+  if (kindOf(nb) !== "notebook") cover.append(h("span", { class: "kind", title: kindOf(nb) === "text" ? "Textdokument" : "Whiteboard", html: kindOf(nb) === "text" ? icons.textdoc : icons.board }));
   tile.onclick = (event) => {
     if (nb.deleted) return showMenu({ x: event.clientX, y: event.clientY }, menu());
     const q = query;
@@ -513,6 +521,9 @@ $<HTMLInputElement>("search").oninput = (event) => {
 $("lib-new").onclick = (event) =>
   showMenu(event.currentTarget as HTMLElement, [
     { label: "Notizbuch", action: () => newNotebookDialog() },
+    { label: "Whiteboard", action: () => void createDocument(newWhiteboard("Whiteboard")) },
+    { label: "Textdokument", action: () => void createDocument(newTextDocument("")) },
+    { separator: true },
     {
       label: "Ordner",
       action: () => {
@@ -526,6 +537,15 @@ $("lib-new").onclick = (event) =>
     { separator: true },
     { label: "Importieren: Goodnotes, PDF oder ZIP …", action: () => $("import-file").click() },
   ]);
+
+async function createDocument(nb: Notebook): Promise<void> {
+  nb.folder = libSection === "all" ? libFolder || undefined : undefined;
+  notebooks.push(nb);
+  await storage.put(nb);
+  scheduleSync();
+  openNotebook(nb);
+  if (kindOf(nb) === "text") $("textdoc-title").focus();
+}
 
 function newNotebookDialog(): void {
   const dialog = $<HTMLDialogElement>("notebook-dialog");
@@ -552,6 +572,7 @@ function newNotebookDialog(): void {
 
 function showLibrary(): void {
   finishTextEdit();
+  saveTextDocNow();
   if (zoomWin) closeZoom();
   $("editor-view").hidden = true;
   $("library-view").hidden = false;
@@ -600,6 +621,8 @@ interface Sheet {
   live: boolean;
   /** Canvas pixels per page unit, so zoomed-in ink stays sharp. */
   res: number;
+  /** Part of the page the canvas holds (page units): all of it, or the visible part when zoomed far in. */
+  view: { x: number; y: number; w: number; h: number };
 }
 let sheets: Sheet[] = [];
 const stage = $("stage");
@@ -669,11 +692,14 @@ function openNotebook(nb: Notebook): void {
   saveSettingsNow();
   $("library-view").hidden = true;
   $("editor-view").hidden = false;
+  $("editor-view").dataset.kind = kindOf(nb);
+  if (switching || kindOf(nb) === "text") loadTextDoc(nb);
   buildSheets();
   renderTabs();
   renderContext();
   updateUndoButtons();
   if (switching) stage.scrollTo(0, 0);
+  if (switching && kindOf(nb) === "whiteboard") centerBoard();
 }
 
 /** Rebuilds the page elements, e.g. after pages were added, removed or reordered. */
@@ -685,7 +711,7 @@ function buildSheets(): void {
     const overlay = h("canvas", { class: "overlay" });
     const el = h("div", { class: "sheet" }, canvas, overlay) as HTMLDivElement;
     el.style.aspectRatio = `${pageW(p)} / ${pageH(p)}`;
-    return { page: p, el, canvas, overlay, ctx: canvas.getContext("2d")!, live: false, res: 1 };
+    return { page: p, el, canvas, overlay, ctx: canvas.getContext("2d")!, live: false, res: 1, view: { x: 0, y: 0, w: pageW(p), h: pageH(p) } };
   });
   const add = h("button", { class: "add-sheet", title: "Seite hinzufügen" }, icon("plus"), "Seite hinzufügen");
   add.onclick = () => addPage(pages[pages.length - 1]);
@@ -705,12 +731,14 @@ function layoutSheets(): void {
   for (const s of sheets) {
     const ratio = pageW(s.page) / pageH(s.page);
     // Vertical: fit the width (at most 1000 px). Horizontal: fit the whole page.
-    const fit = settings.scroll === "horizontal" ? Math.min(width, height * ratio) : Math.min(1000, width);
+    const board = current && kindOf(current) === "whiteboard";
+    // A whiteboard keeps the scale of a page (1404 units across the screen) and is panned around.
+    const fit = board ? Math.min(1000, width) * (pageW(s.page) / PAGE_WIDTH) : settings.scroll === "horizontal" ? Math.min(width, height * ratio) : Math.min(1000, width);
     const w = Math.max(120, Math.round(fit * zoom));
     s.el.style.width = `${w}px`;
     // Side by side: every page gets a slot as wide as the screen, so exactly
     // one page is in view. Zoomed in, pages keep a gap instead.
-    s.el.style.marginInline = settings.scroll === "horizontal" ? `${Math.max(24, (stage.clientWidth - w) / 2)}px` : "";
+    s.el.style.marginInline = settings.scroll === "horizontal" && !board ? `${Math.max(24, (stage.clientWidth - w) / 2)}px` : "";
   }
   refreshResolution();
   const add = pagesEl.lastElementChild as HTMLElement | null;
@@ -762,6 +790,8 @@ stage.addEventListener("scroll", () => {
   scrollFrame = requestAnimationFrame(() => {
     scrollFrame = 0;
     trackCurrentPage();
+    // Zoomed far in, only the visible part is drawn; follow the view.
+    if (!pinch) for (const s of sheets) if (s.live && (s.view.w < pageW(s.page) - 0.5 || s.view.h < pageH(s.page) - 0.5) && sheetStale(s)) queueRender(s);
   });
 });
 
@@ -789,12 +819,52 @@ let editingTextId: string | undefined;
  * current zoom, but capped so a few live pages fit in iPad canvas memory.
  */
 const MAX_SHEET_PIXELS = 10_000_000;
-function sheetRes(s: Sheet): number {
-  const area = pageW(s.page) * pageH(s.page);
-  const want = ((parseFloat(s.el.style.width) || pageW(s.page)) * (window.devicePixelRatio || 1)) / pageW(s.page);
+const quarter = (v: number) => Math.floor(v * 4) / 4;
+/** Resolution and region a sheet should be drawn with right now. */
+function sheetPlan(s: Sheet): { res: number; view: Sheet["view"] } {
+  const w = pageW(s.page);
+  const hgt = pageH(s.page);
+  const full = { x: 0, y: 0, w, h: hgt };
   // Steps of 1/4 avoid re-rendering for tiny zoom changes.
-  const cap = Math.floor(Math.sqrt(MAX_SHEET_PIXELS / area) * 4) / 4;
-  return Math.max(0.5, Math.min(Math.ceil(want * 4) / 4, cap));
+  const want = Math.max(0.5, Math.ceil((((parseFloat(s.el.style.width) || w) * (window.devicePixelRatio || 1)) / w) * 4) / 4);
+  if (w * hgt * want * want <= MAX_SHEET_PIXELS) return { res: want, view: full };
+  // Too big as a whole: hold only the visible part plus half a screen around it, sharp.
+  const r = s.el.getBoundingClientRect();
+  const v = stage.getBoundingClientRect();
+  const left = Math.max(r.left, v.left - v.width / 2);
+  const right = Math.min(r.right, v.right + v.width / 2);
+  const top = Math.max(r.top, v.top - v.height / 2);
+  const bottom = Math.min(r.bottom, v.bottom + v.height / 2);
+  const capped = Math.max(0.5, quarter(Math.sqrt(MAX_SHEET_PIXELS / (w * hgt))));
+  if (right <= left || bottom <= top || r.width <= 0) return { res: Math.min(want, capped), view: full };
+  const k = w / r.width;
+  const view = { x: (left - r.left) * k, y: (top - r.top) * k, w: (right - left) * k, h: (bottom - top) * k };
+  return { res: Math.max(0.5, Math.min(want, quarter(Math.sqrt(MAX_SHEET_PIXELS / (view.w * view.h))))), view };
+}
+/** Whether a live sheet must be drawn again: other resolution, or the view left its drawn region. */
+function sheetStale(s: Sheet): boolean {
+  const plan = sheetPlan(s);
+  if (plan.res !== s.res) return true;
+  const full = s.view.w >= pageW(s.page) - 0.5 && s.view.h >= pageH(s.page) - 0.5;
+  if (full) return plan.view.w < pageW(s.page) - 0.5 || plan.view.h < pageH(s.page) - 0.5;
+  const r = s.el.getBoundingClientRect();
+  const v = stage.getBoundingClientRect();
+  const k = pageW(s.page) / r.width;
+  const vis = { x: (Math.max(r.left, v.left) - r.left) * k, y: (Math.max(r.top, v.top) - r.top) * k, x2: (Math.min(r.right, v.right) - r.left) * k, y2: (Math.min(r.bottom, v.bottom) - r.top) * k };
+  if (vis.x2 <= vis.x || vis.y2 <= vis.y) return false;
+  return vis.x < s.view.x - 1 || vis.y < s.view.y - 1 || vis.x2 > s.view.x + s.view.w + 1 || vis.y2 > s.view.y + s.view.h + 1;
+}
+/** Canvas transform: page units → pixels of the drawn region. */
+function sheetTransform(s: Sheet, ctx: CanvasRenderingContext2D): void {
+  ctx.setTransform(s.res, 0, 0, s.res, -s.view.x * s.res, -s.view.y * s.res);
+}
+function placeCanvas(s: Sheet, c: HTMLCanvasElement): void {
+  const w = pageW(s.page);
+  const hgt = pageH(s.page);
+  c.style.left = `${(s.view.x / w) * 100}%`;
+  c.style.top = `${(s.view.y / hgt) * 100}%`;
+  c.style.width = `${(s.view.w / w) * 100}%`;
+  c.style.height = `${(s.view.h / hgt) * 100}%`;
 }
 let resTimer: ReturnType<typeof setTimeout> | undefined;
 let highlight: { page: Page; boxes: TextRun[] } | undefined;
@@ -804,7 +874,7 @@ function refreshResolution(): void {
   clearTimeout(resTimer);
   resTimer = setTimeout(() => {
     if (gesture || pinch) return refreshResolution();
-    for (const s of sheets) if (s.live && sheetRes(s) !== s.res) queueRender(s);
+    for (const s of sheets) if (s.live && sheetStale(s)) queueRender(s);
   }, 180);
 }
 
@@ -812,16 +882,21 @@ function renderSheet(s: Sheet): void {
   if (!s.live) return;
   renderQueue.delete(s);
   const p = s.page;
-  s.res = sheetRes(s);
+  const plan = sheetPlan(s);
+  s.res = plan.res;
+  s.view = plan.view;
   const w = Math.round(pageW(p));
   const hgt = Math.round(pageH(p));
-  const pw = Math.round(w * s.res);
-  const ph = Math.round(hgt * s.res);
-  if (s.canvas.width !== pw || s.canvas.height !== ph) {
-    s.canvas.width = pw;
-    s.canvas.height = ph;
+  const cw = Math.max(1, Math.round(s.view.w * s.res));
+  const ch = Math.max(1, Math.round(s.view.h * s.res));
+  if (s.canvas.width !== cw || s.canvas.height !== ch) {
+    s.canvas.width = cw;
+    s.canvas.height = ch;
   }
-  s.ctx.setTransform(s.res, 0, 0, s.res, 0, 0);
+  placeCanvas(s, s.canvas);
+  sheetTransform(s, s.ctx);
+  // PDF backgrounds are rendered whole; keep their bitmap within the memory cap.
+  const pw = Math.min(Math.round(w * s.res), Math.round(Math.sqrt((MAX_SHEET_PIXELS * w) / hgt)));
   const shown = editingTextId ? { ...p, texts: p.texts?.filter((t) => t.id !== editingTextId) } : p;
   const bg = p.background;
   const key = bg && `${bg.attachment}:${bg.page}:${pw}`;
@@ -1205,7 +1280,7 @@ function cancelGesture(): void {
 
 const MIN_ZOOM = 0.5;
 const MAX_ZOOM = 5;
-const clampZoomLevel = (z: number) => Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, z));
+const clampZoomLevel = (z: number) => Math.min(MAX_ZOOM, Math.max(current && kindOf(current) === "whiteboard" ? 0.15 : MIN_ZOOM, z));
 
 /** A point on a page, so zooming can keep it under the fingers however gaps and centring change. */
 interface ZoomAnchor {
@@ -1568,6 +1643,7 @@ const finish = (event: PointerEvent) => {
       toast("Weggekritzelt", 900);
     } else p.strokes.push(g.stroke);
     changed(p, false);
+    if (current && kindOf(current) === "whiteboard") growBoard(g.sheet);
   }
   renderSheet(g.sheet);
   renderSelectionMenu();
@@ -1687,10 +1763,11 @@ function drawLasers(now: number): void {
   for (const [s, trail] of laserTrails) {
     const o = s.overlay;
     if (o.width !== s.canvas.width || o.height !== s.canvas.height) [o.width, o.height] = [s.canvas.width, s.canvas.height];
+    placeCanvas(s, o);
     const ctx = o.getContext("2d")!;
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.clearRect(0, 0, o.width, o.height);
-    ctx.setTransform(s.res, 0, 0, s.res, 0, 0);
+    sheetTransform(s, ctx);
     const holding = gesture?.kind === "laser" && gesture.sheet === s;
     const alive = trail.filter((q) => now - q.t < 650);
     if (holding && !alive.length && trail.length) alive.push(trail[trail.length - 1]);
@@ -2343,8 +2420,13 @@ $("more").onclick = (event) => {
   const p = page();
   if (!current || !p) return;
   const nb = current;
+  if (kindOf(nb) === "text")
+    return showMenu(event.currentTarget as HTMLElement, [
+      { label: `Aufnahmen (${(nb.recordings ?? []).filter((r) => !r.deleted).length})`, action: openRecordings },
+      { label: "Einstellungen", action: openSettings },
+    ]);
   showMenu(event.currentTarget as HTMLElement, [
-    ...pageMenu(p).filter((item) => !item.label?.startsWith("Nach ")),
+    ...pageMenu(p).filter((item) => !item.label?.startsWith("Nach ") && (kindOf(nb) === "notebook" || !/Seite|Neue/.test(item.label ?? ""))),
     { separator: true },
     { label: "Seiten untereinander", checked: settings.scroll === "vertical", action: () => setScroll("vertical") },
     { label: "Seiten nebeneinander", checked: settings.scroll === "horizontal", action: () => setScroll("horizontal") },
@@ -2415,6 +2497,7 @@ async function renderForExport(p: Page): Promise<HTMLCanvasElement> {
 
 async function exportPdf(): Promise<void> {
   if (!current) return;
+  if (kindOf(current) === "text") return exportTextPdf(current);
   finishTextEdit();
   toast("PDF wird erstellt …", 10000);
   const pages = [];
@@ -3179,6 +3262,131 @@ function drawPenPreview(c: HTMLCanvasElement): void {
   drawStroke(ctx, { id: "preview", tool: "pen", color: getComputedStyle(document.body).getPropertyValue("--text").trim() || "#000", width: preset.widths[preset.width] * 2, points, pen: settings.penType });
 }
 window.addEventListener("resize", () => !toolPanel.hidden && placeToolPanel());
+
+// ---------------------------------------------------------------------------
+// Whiteboards: one large page that grows in every direction
+
+/** Shifts undo snapshots of a page after its content moved, so undo stays in place. */
+function shiftSnapshots(pageId: string, dx: number, dy: number): void {
+  for (const snapshot of [...undoStack, ...redoStack]) {
+    if (snapshot.pageId !== pageId) continue;
+    const c = JSON.parse(snapshot.content) as Pick<Page, "strokes" | "texts" | "images">;
+    for (const s of c.strokes ?? []) s.points = s.points.map((q) => ({ ...q, x: q.x + dx, y: q.y + dy }));
+    for (const t of c.texts ?? []) Object.assign(t, { x: t.x + dx, y: t.y + dy });
+    for (const i of c.images ?? []) Object.assign(i, { x: i.x + dx, y: i.y + dy });
+    snapshot.content = JSON.stringify(c);
+  }
+}
+function growBoard(s: Sheet): void {
+  const before = s.el.getBoundingClientRect().width / pageW(s.page);
+  const d = growWhiteboard(s.page);
+  if (!d) return;
+  if (d.dx || d.dy) shiftSnapshots(s.page.id, d.dx, d.dy);
+  s.el.style.aspectRatio = `${pageW(s.page)} / ${pageH(s.page)}`;
+  layoutSheets();
+  // Content moved right/down by the growth on the left/top; keep it where it was on screen.
+  stage.scrollLeft += d.dx * before;
+  stage.scrollTop += d.dy * before;
+  changed(s.page);
+}
+/** Opens a whiteboard at the middle of its content (or of the board). */
+function centerBoard(): void {
+  const s = sheets[0];
+  if (!s) return;
+  const p = s.page;
+  const xs = p.strokes.flatMap((q) => q.points.map((r) => r.x));
+  const ys = p.strokes.flatMap((q) => q.points.map((r) => r.y));
+  const cx = xs.length ? (Math.min(...xs) + Math.max(...xs)) / 2 : pageW(p) / 2;
+  const cy = ys.length ? (Math.min(...ys) + Math.max(...ys)) / 2 : pageH(p) / 2;
+  const k = s.el.getBoundingClientRect().width / pageW(p);
+  stage.scrollTo(s.el.offsetLeft + cx * k - stage.clientWidth / 2, s.el.offsetTop + cy * k - stage.clientHeight / 2);
+}
+
+// ---------------------------------------------------------------------------
+// Text documents: typing with headings, lists and checklists
+
+const textBody = $("textdoc-body");
+const textTitle = $<HTMLInputElement>("textdoc-title");
+let textSaveTimer: ReturnType<typeof setTimeout> | undefined;
+let textDocOf: Notebook | undefined;
+function loadTextDoc(nb: Notebook): void {
+  saveTextDocNow();
+  textDocOf = kindOf(nb) === "text" ? nb : undefined;
+  if (!textDocOf) return;
+  textTitle.value = nb.title;
+  textBody.innerHTML = sanitizeHtml(nb.doc?.html ?? "");
+}
+function saveTextDocNow(): void {
+  clearTimeout(textSaveTimer);
+  textSaveTimer = undefined;
+  const nb = textDocOf;
+  if (!nb) return;
+  const html = sanitizeHtml(textBody.innerHTML);
+  const title = textTitle.value.trim();
+  if (nb.doc?.html === html && nb.title === title) return;
+  nb.doc = { html };
+  nb.title = title;
+  nb.updatedAt = Date.now();
+  storage.save(nb);
+  scheduleSync();
+  renderTabs();
+}
+const scheduleTextSave = () => {
+  clearTimeout(textSaveTimer);
+  textSaveTimer = setTimeout(saveTextDocNow, 500);
+};
+textBody.addEventListener("input", scheduleTextSave);
+textTitle.addEventListener("input", scheduleTextSave);
+textTitle.addEventListener("keydown", (event) => {
+  if (event.key === "Enter") {
+    event.preventDefault();
+    textBody.focus();
+  }
+});
+// Pasted text comes in plain, so foreign styles and scripts never enter the document.
+textBody.addEventListener("paste", (event) => {
+  event.preventDefault();
+  document.execCommand("insertText", false, event.clipboardData?.getData("text/plain") ?? "");
+});
+// Ticking a checklist item: tap its box.
+textBody.addEventListener("click", (event) => {
+  const li = (event.target as HTMLElement).closest("ul.check > li") as HTMLElement | null;
+  if (!li || event.clientX - li.getBoundingClientRect().left > 28) return;
+  li.dataset.checked = li.dataset.checked === "true" ? "false" : "true";
+  if (li.dataset.checked === "false") li.removeAttribute("data-checked");
+  scheduleTextSave();
+});
+$("textdoc-undo").onclick = undo;
+$("textdoc-redo").onclick = redo;
+document.querySelectorAll<HTMLButtonElement>("#textdoc-bar button[data-block], #textdoc-bar button[data-inline], #textdoc-bar button[data-list]").forEach((b) => {
+  // Keep the text selection when tapping a format button.
+  b.onpointerdown = (event) => event.preventDefault();
+  b.onclick = () => {
+    textBody.focus();
+    if (b.dataset.inline) document.execCommand(b.dataset.inline);
+    else if (b.dataset.block === "hr") document.execCommand("insertHorizontalRule");
+    else if (b.dataset.block) document.execCommand("formatBlock", false, `<${b.dataset.block}>`);
+    else if (b.dataset.list === "ol") document.execCommand("insertOrderedList");
+    else if (b.dataset.list) {
+      document.execCommand("insertUnorderedList");
+      const node = window.getSelection()?.anchorNode;
+      const list = (node instanceof Element ? node : node?.parentElement)?.closest("ul");
+      list?.classList.toggle("check", b.dataset.list === "check");
+    }
+    scheduleTextSave();
+  };
+});
+document.addEventListener("visibilitychange", () => document.visibilityState === "hidden" && saveTextDocNow());
+
+async function exportTextPdf(nb: Notebook): Promise<void> {
+  saveTextDocNow();
+  const pages = [];
+  for (const c of renderTextPages(nb.title, nb.doc?.html ?? "", 1.4)) {
+    const blob = await new Promise<Blob>((resolve, reject) => c.toBlob((b) => (b ? resolve(b) : reject(new Error("JPEG"))), "image/jpeg", 0.92));
+    pages.push({ jpeg: new Uint8Array(await blob.arrayBuffer()), pixelWidth: c.width, pixelHeight: c.height, width: 595.28, height: 841.89 });
+  }
+  await shareFile(`${safeName(nb.title)}.pdf`, writePdf(pages), "application/pdf");
+}
 
 // Debug and test hook: exposes state for automated UI tests.
 (window as unknown as { kladde: unknown }).kladde = {

@@ -35,6 +35,8 @@ export const icons = {
   newline: svg('<path d="M19 6v6a2 2 0 0 1-2 2H6"/><path d="M9 10.5L5.5 14 9 17.5"/>'),
   trash: svg('<path d="M4.5 7h15M9.5 7V4.5h5V7M6.5 7l1 13h9l1-13M10 10.5v6M14 10.5v6"/>'),
   mic: svg('<rect x="9" y="3.5" width="6" height="11" rx="3"/><path d="M5.5 11.5a6.5 6.5 0 0 0 13 0M12 18v2.5M9 20.5h6"/>'),
+  board: svg('<rect x="3.5" y="4.5" width="17" height="12" rx="1.5"/><path d="M8 20l4-3.5 4 3.5M7 9.5c2-2 3 1 5-1s3 1 5-1"/>'),
+  textdoc: svg('<path d="M6 3.5h12v17H6z"/><path d="M9 8h6M9 11.5h6M9 15h4"/>'),
   search: svg('<circle cx="11" cy="11" r="6"/><path d="M20 20l-4.5-4.5"/>'),
 };
 

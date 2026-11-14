@@ -4,8 +4,8 @@ import { createBackup, isBackup, restoreBackup } from "./backup";
 import { expandImport, joinFolder, notebookFromPdf } from "./bundle";
 import { copySelection, eraseAt, pasteClip, recolorSelection, rotateSelection, scribbleTargets } from "./edit";
 import { penFactor } from "./ink";
-import { mergeNotebook, newNotebook, newPage, notebookAttachments, PAGE_WIDTH, visiblePages, type Point, type Stroke } from "./model";
-import { duplicatePage, insertPage, insertPageAt, movePage, pageLike } from "./pages";
+import { kindOf, mergeNotebook, newNotebook, newPage, newTextDocument, newWhiteboard, notebookAttachments, PAGE_WIDTH, visiblePages, type Point, type Stroke } from "./model";
+import { duplicatePage, growWhiteboard, insertPage, insertPageAt, movePage, pageLike } from "./pages";
 import { writePdf } from "./pdfwrite";
 import { DEFAULTS, withDefaults } from "./settings";
 import { joinNotebooks, splitNotebook } from "./storage";
@@ -283,5 +283,25 @@ describe("recordings sync", () => {
     // Ordered by start time; the deletion from the newer edit wins.
     expect(merged.recordings!.map((r) => [r.id, !!r.deleted])).toEqual([["2", false], ["3", false], ["1", true]]);
     expect(notebookAttachments(merged).sort()).toEqual(["a2", "a3"]);
+  });
+});
+
+describe("document kinds", () => {
+  it("whiteboards grow at the edges and shift content when growing left or up", () => {
+    const board = newWhiteboard("Brainstorm");
+    expect(kindOf(board)).toBe("whiteboard");
+    expect(kindOf(newNotebook("x"))).toBe("notebook");
+    expect(kindOf(newTextDocument("t"))).toBe("text");
+    const page = board.pages[0];
+    expect(growWhiteboard(page)).toBeUndefined();
+    page.strokes = [stroke("mid", [pt(1400, 1400), pt(1500, 1450)])];
+    expect(growWhiteboard(page)).toBeUndefined();
+    page.strokes.push(stroke("edge", [pt(2700, 1400), pt(2780, 2700)]));
+    expect(growWhiteboard(page)).toEqual({ dx: 0, dy: 0 });
+    expect([page.width, page.height]).toEqual([2808 + 1404, 2808 + 1053]);
+    page.strokes.push(stroke("left", [pt(100, 1000)]));
+    expect(growWhiteboard(page)).toEqual({ dx: 1404, dy: 0 });
+    expect(page.strokes[0].points[0]).toMatchObject({ x: 2804, y: 1400 });
+    expect(page.width).toBe(2808 + 1404 * 2);
   });
 });

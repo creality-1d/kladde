@@ -84,6 +84,24 @@ export interface Notebook {
   cover?: string;
   /** Audio recordings; merged by id like pages. */
   recordings?: Recording[];
+  /** Document type as in Goodnotes: a notebook (default), a whiteboard or a text document. */
+  kind?: "whiteboard" | "text";
+  /** Content of a text document (sanitised HTML). */
+  doc?: { html: string };
+}
+
+export type DocKind = "notebook" | "whiteboard" | "text";
+export const kindOf = (nb: Notebook): DocKind => nb.kind ?? "notebook";
+
+/** A whiteboard: one large page that grows as you write near its edges. */
+export function newWhiteboard(title: string, now = Date.now()): Notebook {
+  const page = { ...newPage("dotted", now), width: PAGE_WIDTH * 2, height: PAGE_HEIGHT * 1.5 };
+  return { id: newId(), title, pages: [page], updatedAt: now, kind: "whiteboard" };
+}
+
+/** A text document for typing, with headings and lists. */
+export function newTextDocument(title: string, now = Date.now()): Notebook {
+  return { id: newId(), title, pages: [newPage("blank", now)], updatedAt: now, kind: "text", doc: { html: "<p><br></p>" } };
 }
 
 export interface Recording {

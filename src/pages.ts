@@ -45,3 +45,38 @@ export function movePage(notebook: Notebook, from: number, to: number): void {
   // Another device only adopts the new order when the notebook itself is newer.
   notebook.updatedAt = Date.now();
 }
+
+/** How close (page units) ink may come to a whiteboard edge before it grows. */
+const GROW_MARGIN = 350;
+const MAX_BOARD = 14040;
+
+/**
+ * Grows a whiteboard page when content comes near an edge. Growing left or up
+ * shifts the content; the returned offset lets the caller keep the view still.
+ */
+export function growWhiteboard(page: Page): { dx: number; dy: number } | undefined {
+  const xs: number[] = [];
+  const ys: number[] = [];
+  for (const s of page.strokes) for (const q of s.points) xs.push(q.x), ys.push(q.y);
+  for (const t of page.texts ?? []) xs.push(t.x, t.x + t.width), ys.push(t.y, t.y + t.fontSize * 1.4);
+  for (const i of page.images ?? []) xs.push(i.x, i.x + i.width), ys.push(i.y, i.y + i.height);
+  if (!xs.length) return undefined;
+  const w = page.width ?? 1404;
+  const h = page.height ?? 1872;
+  const [minX, maxX, minY, maxY] = [Math.min(...xs), Math.max(...xs), Math.min(...ys), Math.max(...ys)];
+  const stepX = 1404;
+  const stepY = 1053;
+  const left = minX < GROW_MARGIN && w + stepX <= MAX_BOARD ? stepX : 0;
+  const top = minY < GROW_MARGIN && h + stepY <= MAX_BOARD ? stepY : 0;
+  const right = maxX > w - GROW_MARGIN && w + left + stepX <= MAX_BOARD ? stepX : 0;
+  const bottom = maxY > h - GROW_MARGIN && h + top + stepY <= MAX_BOARD ? stepY : 0;
+  if (!left && !top && !right && !bottom) return undefined;
+  page.width = w + left + right;
+  page.height = h + top + bottom;
+  if (left || top) {
+    for (const s of page.strokes) s.points = s.points.map((q) => ({ ...q, x: q.x + left, y: q.y + top }));
+    for (const t of page.texts ?? []) Object.assign(t, { x: t.x + left, y: t.y + top });
+    for (const i of page.images ?? []) Object.assign(i, { x: i.x + left, y: i.y + top });
+  }
+  return { dx: left, dy: top };
+}

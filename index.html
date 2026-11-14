@@ -81,6 +81,31 @@
           <div id="sidebar-list"></div>
         </aside>
         <div id="stage"><div id="pinch-spacer" hidden></div><div id="pages"></div></div>
+        <div id="textdoc">
+          <div id="textdoc-bar">
+            <button id="textdoc-undo" class="icon" title="Rückgängig" data-icon="undo"></button>
+            <button id="textdoc-redo" class="icon" title="Wiederholen" data-icon="redo"></button>
+            <span class="divider"></span>
+            <button data-block="h1" title="Titel">Titel</button>
+            <button data-block="h2" title="Überschrift">Überschrift</button>
+            <button data-block="p" title="Fließtext">Text</button>
+            <span class="divider"></span>
+            <button data-inline="bold" title="Fett"><b>F</b></button>
+            <button data-inline="italic" title="Kursiv"><i>K</i></button>
+            <button data-inline="underline" title="Unterstrichen"><u>U</u></button>
+            <span class="divider"></span>
+            <button data-list="ul" title="Aufzählung">• Liste</button>
+            <button data-list="ol" title="Nummerierte Liste">1. Liste</button>
+            <button data-list="check" title="Checkliste">☐ Aufgaben</button>
+            <button data-block="hr" title="Trennlinie">—</button>
+          </div>
+          <div id="textdoc-scroll">
+            <article id="textdoc-page">
+              <input id="textdoc-title" placeholder="Titel" autocomplete="off" />
+              <div id="textdoc-body" contenteditable="true" spellcheck="true"></div>
+            </article>
+          </div>
+        </div>
         <div id="ruler" hidden><span id="ruler-angle"></span></div>
       <div id="tool-panel" hidden></div>
       <div id="rec-panel" class="float-panel" hidden>

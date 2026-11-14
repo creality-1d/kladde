@@ -6,11 +6,14 @@ Kladde ist eine eigenständige App. Sie enthält keinen Code und keine Gestaltun
 
 ## Funktionen
 
+Drei Dokumentarten wie in Goodnotes: **Notizbuch** (Seiten), **Whiteboard** (große Fläche, die beim Schreiben am Rand in jede Richtung mitwächst) und **Textdokument** (Tippen mit Titel, Überschriften, Fett/Kursiv/Unterstrichen, Listen, Checklisten und Trennlinien; Export als PDF).
+
 Kladde ist so aufgebaut, dass man von Goodnotes ohne Umgewöhnung weiterarbeiten kann: dieselbe Anordnung (Bibliothek mit Deckblättern, Werkzeugleiste oben, Farben und Stärken rechts, Seitenübersicht links) und dieselben Gesten. Icons und Gestaltung sind eigene. Ein Vergleich mit Goodnotes 6 steht in [docs/goodnotes-vergleich.md](docs/goodnotes-vergleich.md).
 
 **Schreiben**
 - Stift mit Druckempfindlichkeit (Apple Pencil, S Pen, Grafiktabletts) als Füller, Kugelschreiber oder Pinsel; Textmarker, Radierer, Formen, Lasso, Bild, Text, Laserpointer
 - Drei Lieblingsfarben und drei Strichstärken pro Werkzeug; nochmal tippen ändert Farbe oder Stärke
+- Aktives Werkzeug nochmal antippen: verschiebbares Einstellungsfeld mit Stiftart, Stärke, Spitzenschärfe, Druckempfindlichkeit, Strichstabilisierung und Vorschau; beim Textmarker „Gerade Linien“, beim Radierer Modus und Größe
 - Strich am Ende kurz halten: wird zur geraden Linie, zum Rechteck oder zur Ellipse (Form-Werkzeug begradigt immer)
 - Textmarker liegt unter Schrift und Tinte
 - Wegkritzeln radiert, was darunter geschrieben steht
@@ -28,7 +31,8 @@ Kladde ist so aufgebaut, dass man von Goodnotes ohne Umgewöhnung weiterarbeiten
 - Zwei-Finger-Pinch zoomt, Strg+Mausrad am Rechner
 
 **Notizbücher**
-- Seiten untereinander scrollen oder nebeneinander blättern
+- Seiten untereinander scrollen oder nebeneinander blättern (dann ist immer genau eine Seite im Bild)
+- Scrollen mit Schwung wie unter iOS; Pinch-Zoom hält die Stelle unter den Fingern fest; bei starkem Zoom wird der sichtbare Ausschnitt gestochen scharf gezeichnet
 - Seitenübersicht mit Miniaturen: Seiten einfügen (davor/danach), duplizieren, verschieben (ziehen oder Menü), löschen, Papier ändern
 - Neue Seiten übernehmen Papier und Format der aktuellen Seite
 - Lesezeichen und Gliederung

@@ -276,3 +276,46 @@ dialog .row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
 #tool-panel input[type=range] { width: 100%; accent-color: var(--accent); }
 #tool-panel .check { display: flex; gap: 8px; align-items: center; font-size: 14px; }
 #tool-panel .pen-preview { width: 100%; height: 60px; background: var(--panel); border-radius: 8px; }
+
+/* Document kinds: notebook, whiteboard, text document */
+#textdoc { display: none; flex: 1; min-width: 0; flex-direction: column; background: var(--bg); }
+#editor-view[data-kind="text"] #textdoc { display: flex; }
+#editor-view[data-kind="text"] #stage,
+#editor-view[data-kind="text"] #toolbar .tools,
+#editor-view[data-kind="text"] #context,
+#editor-view[data-kind="text"] #find,
+#editor-view[data-kind="text"] #share-pages,
+#editor-view[data-kind="text"] #toggle-sidebar,
+#editor-view[data-kind="text"] #bookmark,
+#editor-view[data-kind="text"] #page-label,
+#editor-view[data-kind="text"] #add-page,
+#editor-view[data-kind="whiteboard"] #toggle-sidebar,
+#editor-view[data-kind="whiteboard"] #bookmark,
+#editor-view[data-kind="whiteboard"] #page-label,
+#editor-view[data-kind="whiteboard"] #add-page,
+#editor-view[data-kind="whiteboard"] .add-sheet { display: none !important; }
+#editor-view[data-kind="text"] #sidebar { display: none; }
+#textdoc-bar { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; justify-content: center; padding: 6px 12px; border-bottom: 1px solid var(--line); background: var(--panel); }
+#textdoc-bar button { font: inherit; font-size: 14px; padding: 6px 10px; border-radius: 8px; border: 0; background: none; color: var(--text); }
+#textdoc-bar button:hover, #textdoc-bar button.active { background: var(--bg); }
+#textdoc-bar .divider { width: 1px; height: 22px; background: var(--line); margin: 0 4px; }
+#textdoc-scroll { flex: 1; overflow: auto; padding: 24px 16px 80px; -webkit-overflow-scrolling: touch; }
+#textdoc-page { max-width: 760px; margin: 0 auto; background: #fff; color: #1d2733; border-radius: 6px; box-shadow: var(--shadow); padding: 48px 56px 80px; min-height: 70vh; }
+#textdoc-title { width: 100%; border: 0; outline: 0; font: 700 32px/1.25 system-ui, -apple-system, sans-serif; color: inherit; background: none; margin-bottom: 12px; }
+#textdoc-body { outline: 0; font: 17px/1.6 system-ui, -apple-system, sans-serif; min-height: 50vh; }
+#textdoc-body h1 { font-size: 28px; margin: 24px 0 8px; }
+#textdoc-body h2 { font-size: 22px; margin: 20px 0 6px; }
+#textdoc-body p { margin: 0 0 8px; }
+#textdoc-body ul.check { list-style: none; padding-left: 4px; }
+#textdoc-body ul.check li { position: relative; padding-left: 32px; }
+#textdoc-body ul.check li::before { content: ""; position: absolute; left: 0; top: 4px; width: 18px; height: 18px; border: 2px solid #8792a2; border-radius: 5px; cursor: pointer; }
+#textdoc-body ul.check li[data-checked="true"] { color: #8792a2; text-decoration: line-through; }
+#textdoc-body ul.check li[data-checked="true"]::before { background: var(--accent); border-color: var(--accent); }
+#textdoc-body hr { border: 0; border-top: 2px solid #d9dee5; margin: 18px 0; }
+@media (max-width: 700px) { #textdoc-page { padding: 28px 20px 60px; } }
+.tile .cover { position: relative; }
+#editor-view[data-kind="text"] #toolbar { display: none; }
+.tile .kind { position: absolute; right: 8px; bottom: 8px; width: 26px; height: 26px; display: grid; place-items: center; border-radius: 7px; background: #000a; color: #fff; }
+.tile .kind svg { width: 16px; height: 16px; }
+.cover.textcover { background: #fff; color: #1d2733; padding: 14px; text-align: left; font-size: 11px; line-height: 1.4; overflow: hidden; display: block; }
+.cover.textcover b { display: block; font-size: 14px; margin-bottom: 6px; }

@@ -2,12 +2,15 @@
 
 Ziel von Kladde: Wer von Goodnotes kommt, soll ohne Umgewöhnung weiterschreiben können. Übernommen sind deshalb Anordnung und Gesten, nicht die Gestaltung: Icons, Farben und Texte sind eigene.
 
-Stand: Kladde 0.4.0. „Getestet“ heißt, dass der Ablauf in den automatischen Oberflächentests (Electron mit echten Stift-, Finger- und Mauseingaben) oder Unit-Tests geprüft wurde. Die Spalte zu Goodnotes beschreibt Goodnotes 6 auf dem iPad.
+Stand: Kladde 0.5.0. „Getestet“ heißt, dass der Ablauf in den automatischen Oberflächentests (Electron mit echten Stift-, Finger- und Mauseingaben) oder Unit-Tests geprüft wurde. Die Spalte zu Goodnotes beschreibt Goodnotes 6 auf dem iPad.
 
 ## Gewohnheiten, die gleich funktionieren
 
 | Gewohnheit | Goodnotes 6 | Kladde | Geprüft |
 | --- | --- | --- | --- |
+| Drei Dokumentarten: Notizbuch, Whiteboard, Textdokument | ja | ja | getestet |
+| Werkzeug nochmal antippen: Einstellungen mit Schiebereglern (Spitzenschärfe, Druckempfindlichkeit, Strichstabilisierung) | ja | ja, Feld frei verschiebbar | getestet |
+| Seiten nebeneinander: eine Seite pro Bildschirm | ja | ja | getestet |
 | Mit zwei Fingern tippen = rückgängig, drei = wiederholen | ja | ja, abschaltbar | getestet |
 | Apple Pencil doppelt antippen | Systemeinstellung (Radierer, vorheriges Werkzeug, Farbe) | folgt der Systemeinstellung, in Kladde überschreibbar | Ereignis getestet; native Anbindung nur auf dem iPad prüfbar |
 | Strich am Ende halten → Form | ja | ja (Linie, Rechteck, Ellipse) | getestet |
