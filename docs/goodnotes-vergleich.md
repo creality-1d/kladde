@@ -46,7 +46,7 @@ Stand: Kladde 0.3.0. „Getestet“ heißt, dass der Ablauf in den automatischen
 ## Was Kladde nicht hat
 
 - KI-Funktionen, Handschrifterkennung, Suche in Handschrift
-- Live-Zusammenarbeit, Marketplace, Sticker, Audioaufnahmen, Präsentationsmodus/Laserpointer
+- Live-Zusammenarbeit, Marketplace, Sticker, Audioaufnahmen
 - Deckblatt-Bilder und Vorlagen aus dem Marketplace, Präsentation auf externem Bildschirm
 - Bilder aus Goodnotes-Dateien (kamen in den Beispieldateien nicht vor)
 
