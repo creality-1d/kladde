@@ -28,6 +28,8 @@ export interface Settings {
   /** Apple Pencil double tap; "system" follows the iPad setting. */
   doubleTap: "system" | "eraser" | "previous" | "none";
   welcomeSeen: boolean;
+  /** When the last full backup was made (ms), 0 for never. */
+  lastBackup: number;
   /** Ids of notebooks open as tabs, in order. */
   tabs: string[];
   /** Last opening time per notebook id, for "Zuletzt". */
@@ -53,6 +55,7 @@ export const DEFAULTS: Settings = {
   holdToShape: true,
   doubleTap: "system",
   welcomeSeen: false,
+  lastBackup: 0,
   tabs: [],
   opened: {},
   folders: [],

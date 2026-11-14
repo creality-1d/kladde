@@ -33,6 +33,7 @@ export const icons = {
   next: svg('<path d="M9 5l7 7-7 7"/>'),
   prev: svg('<path d="M15 5l-7 7 7 7"/>'),
   newline: svg('<path d="M19 6v6a2 2 0 0 1-2 2H6"/><path d="M9 10.5L5.5 14 9 17.5"/>'),
+  trash: svg('<path d="M4.5 7h15M9.5 7V4.5h5V7M6.5 7l1 13h9l1-13M10 10.5v6M14 10.5v6"/>'),
   search: svg('<circle cx="11" cy="11" r="6"/><path d="M20 20l-4.5-4.5"/>'),
 };
 

@@ -75,7 +75,10 @@ export interface Notebook {
   folder?: string;
   pages: Page[];
   updatedAt: number;
+  /** In the trash; restorable until purged. */
   deleted?: boolean;
+  /** Deleted for good: pages are tombstones, kept only so the deletion syncs. */
+  purged?: boolean;
   favorite?: boolean;
   /** Cover colour shown in the library; the first page is shown when missing. */
   cover?: string;

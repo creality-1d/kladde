@@ -1,3 +1,5 @@
+import { registerPlugin } from "@capacitor/core";
+import { createBackup, isBackup, restoreBackup } from "./backup";
 import { expandImport, joinFolder, notebookFromPdf } from "./bundle";
 import {
   copySelection,
@@ -22,10 +24,11 @@ import { icons, type IconName } from "./icons";
 import { drawPenSegments, drawStroke, renderPage, textHeight } from "./ink";
 import { newId, newNotebook, PAGE_HEIGHT, PAGE_WIDTH, pageAttachments, visiblePages, type Notebook, type Page, type Point, type Stroke, type PaperColor, type PenType, type Template, type TextBox, type Tool } from "./model";
 import { duplicatePage, insertPage, insertPageAt, movePage, pageLike } from "./pages";
-import { pdfPageSizes, renderPdfPage } from "./pdf";
+import { pdfPageSizes, pdfPageText, renderPdfPage } from "./pdf";
+import { inkKey, pageRuns, pdfKey, searchNotebook, type IndexEntry, type PageHit, type TextRun } from "./search";
 import { writePdf } from "./pdfwrite";
 import { loadSettings, saveSettings, type PresetTool } from "./settings";
-import { storage } from "./storage";
+import { persistStorage, storage } from "./storage";
 import { mergeBack, syncNotebooks } from "./sync";
 import { WebDav, type NextcloudAccount } from "./webdav";
 
@@ -126,7 +129,7 @@ let tool: Tool = "pen";
 let previousTool: Tool = "eraser";
 let zoom = 1;
 let query = "";
-let libSection: "all" | "recent" | "favorites" = "all";
+let libSection: "all" | "recent" | "favorites" | "trash" = "all";
 let libFolder = "";
 let sidebarPane: "pages" | "bookmarks" | "outline" = "pages";
 /** The lasso selection and the page it belongs to. */
@@ -189,9 +192,10 @@ function changed(p?: Page, redraw = true): void {
   if (p) p.updatedAt = now;
   if (current) {
     current.updatedAt = now;
-    void storage.put(current);
+    storage.save(current);
   }
   scheduleSync();
+  scheduleIndex();
   if (redraw && p) renderSheetOf(p);
   if (p) thumbs.delete(p.id);
   if (zoomWin && (!p || zoomWin.page === p) && !zoomStroke) renderZoom();
@@ -253,12 +257,8 @@ function folderOf(nb: Notebook): string {
 function matches(nb: Notebook): boolean {
   if (!query) return true;
   const q = query.toLowerCase();
-  const haystack = [
-    nb.title,
-    nb.folder ?? "",
-    ...nb.pages.flatMap((p) => [p.title ?? "", ...(p.texts ?? []).map((t) => t.text), ...(p.flow?.paragraphs ?? []).map((x) => x.text)]),
-  ];
-  return haystack.some((s) => s.toLowerCase().includes(q));
+  if (nb.title.toLowerCase().includes(q) || (nb.folder ?? "").toLowerCase().includes(q)) return true;
+  return searchNotebook(nb, query, textIndex).length > 0;
 }
 const liveNotebooks = () => notebooks.filter((nb) => !nb.deleted);
 const formatDate = (ms: number) => new Date(ms).toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit", year: "numeric" });
@@ -278,7 +278,7 @@ function subfolders(parent: string): string[] {
 function renderLibrary(): void {
   const crumbs = $("crumbs");
   const parts = libFolder ? libFolder.split("/") : [];
-  const rootName = libSection === "recent" ? "Zuletzt" : libSection === "favorites" ? "Favoriten" : "Dokumente";
+  const rootName = libSection === "recent" ? "Zuletzt" : libSection === "favorites" ? "Favoriten" : libSection === "trash" ? "Papierkorb" : "Dokumente";
   const crumb = (label: string, folder: string) => {
     const b = h("button", {}, label);
     b.onclick = () => {
@@ -291,9 +291,11 @@ function renderLibrary(): void {
   if (libSection === "all") parts.forEach((part, i) => crumbs.append(h("span", { class: "sep" }, "›"), crumb(part, parts.slice(0, i + 1).join("/"))));
   document.querySelectorAll<HTMLButtonElement>("#lib-nav [data-section]").forEach((b) => b.classList.toggle("active", b.dataset.section === libSection));
 
-  let books = liveNotebooks().filter(matches);
+  let books = (libSection === "trash" ? notebooks.filter((nb) => nb.deleted && !nb.purged) : liveNotebooks()).filter(matches);
   const tiles: HTMLElement[] = [];
-  if (libSection === "all" && !query) {
+  if (libSection === "trash") {
+    books.sort((a, b) => b.updatedAt - a.updatedAt);
+  } else if (libSection === "all" && !query) {
     for (const name of subfolders(libFolder)) tiles.push(folderTile(joinFolder(libFolder, name)!, name));
     books = books.filter((nb) => folderOf(nb) === libFolder).sort((a, b) => a.title.localeCompare(b.title, "de"));
   } else if (libSection === "recent") {
@@ -313,6 +315,8 @@ function renderLibrary(): void {
       ? "Noch keine Favoriten. Tippe beim Notizbuch auf ⋯ → Favorit."
       : libSection === "recent"
         ? "Noch nichts geöffnet."
+        : libSection === "trash"
+          ? "Der Papierkorb ist leer."
         : "Dieser Ordner ist leer. Über „Neu“ ein Notizbuch anlegen oder Goodnotes-Dateien importieren.";
 }
 
@@ -355,19 +359,27 @@ function notebookTile(nb: Notebook): HTMLElement {
     cover.style.background = nb.cover;
     cover.append(h("span", {}, nb.title));
   } else if (first) void thumbnail(first, 300).then((url) => cover.replaceChildren(h("img", { src: url, alt: "" })));
-  const more = iconButton("more", "Optionen", (event) => showMenu(event.currentTarget as HTMLElement, notebookMenu(nb)));
+  const menu = () => (nb.deleted ? trashMenu(nb) : notebookMenu(nb));
+  const more = iconButton("more", "Optionen", (event) => showMenu(event.currentTarget as HTMLElement, menu()));
   const tile = h(
     "div",
-    { class: "tile" + (first && pageW(first) > pageH(first) ? " landscape" : ""), draggable: "true" },
+    { class: "tile" + (first && pageW(first) > pageH(first) ? " landscape" : ""), draggable: nb.deleted ? "false" : "true" },
     cover,
     h("div", { class: "name" }, h("span", { title: nb.title }, nb.title), more),
-    h("div", { class: "meta" }, formatDate(nb.updatedAt)),
+    h("div", { class: "meta" }, (nb.deleted ? "Gelöscht " : "") + formatDate(nb.updatedAt)),
   );
   if (nb.favorite) tile.append(h("span", { class: "fav", html: icons.starOn }));
-  tile.onclick = () => openNotebook(nb);
+  tile.onclick = (event) => {
+    if (nb.deleted) return showMenu({ x: event.clientX, y: event.clientY }, menu());
+    const q = query;
+    openNotebook(nb);
+    // Coming from a search: jump to the first page with a hit.
+    const hit = q ? searchNotebook(nb, q, textIndex)[0] : undefined;
+    if (hit) showHit(hit);
+  };
   tile.oncontextmenu = (event) => {
     event.preventDefault();
-    showMenu({ x: event.clientX, y: event.clientY }, notebookMenu(nb));
+    showMenu({ x: event.clientX, y: event.clientY }, menu());
   };
   tile.ondragstart = (event) => event.dataTransfer?.setData("text/kladde-notebook", nb.id);
   return tile;
@@ -381,8 +393,35 @@ function notebookMenu(nb: Notebook): MenuItem[] {
     { label: "Deckblatt …", action: () => chooseCover(nb) },
     { label: "In Ordner verschieben …", action: () => moveNotebookPrompt(nb) },
     { label: "Duplizieren", action: () => duplicateNotebook(nb) },
+    { label: "Als Kladde-Datei teilen", action: () => void shareNotebooks([nb], `${safeName(nb.title)}.kladde.zip`) },
     { separator: true },
-    { label: "Löschen", danger: true, action: () => deleteNotebook(nb) },
+    { label: "In den Papierkorb", danger: true, action: () => deleteNotebook(nb) },
+  ];
+}
+
+function trashMenu(nb: Notebook): MenuItem[] {
+  return [
+    {
+      label: "Wiederherstellen",
+      action: () => {
+        saveNotebook(nb, () => (nb.deleted = undefined));
+        toast(`„${nb.title}“ wiederhergestellt`);
+      },
+    },
+    { separator: true },
+    {
+      label: "Endgültig löschen",
+      danger: true,
+      action: () => {
+        if (!confirm(`„${nb.title}“ endgültig löschen? Das lässt sich nicht rückgängig machen.`)) return;
+        const now = Date.now();
+        // Keep a tombstone per page so the deletion also reaches synced devices.
+        saveNotebook(nb, () => {
+          nb.purged = true;
+          nb.pages = nb.pages.map((p) => ({ id: p.id, template: p.template, strokes: [], deleted: true, updatedAt: now }));
+        });
+      },
+    },
   ];
 }
 
@@ -397,7 +436,7 @@ function chooseCover(nb: Notebook): void {
 function saveNotebook(nb: Notebook, change: () => void): void {
   change();
   nb.updatedAt = Date.now();
-  void storage.put(nb);
+  storage.save(nb);
   scheduleSync();
   renderLibrary();
   renderTabs();
@@ -432,9 +471,9 @@ async function duplicateNotebook(nb: Notebook): Promise<void> {
   renderLibrary();
 }
 function deleteNotebook(nb: Notebook): void {
-  if (!confirm(`„${nb.title}“ löschen?`)) return;
   saveNotebook(nb, () => (nb.deleted = true));
   closeTab(nb.id);
+  toast(`„${nb.title}“ liegt im Papierkorb`, 4000);
 }
 function renameFolder(path: string): void {
   const parent = path.split("/").slice(0, -1).join("/");
@@ -557,6 +596,8 @@ interface Sheet {
   /** Transparent layer for the laser pointer, so the page is not redrawn per frame. */
   overlay: HTMLCanvasElement;
   live: boolean;
+  /** Canvas pixels per page unit, so zoomed-in ink stays sharp. */
+  res: number;
 }
 let sheets: Sheet[] = [];
 const stage = $("stage");
@@ -611,7 +652,7 @@ function buildSheets(): void {
     const overlay = h("canvas", { class: "overlay" });
     const el = h("div", { class: "sheet" }, canvas, overlay) as HTMLDivElement;
     el.style.aspectRatio = `${pageW(p)} / ${pageH(p)}`;
-    return { page: p, el, canvas, overlay, ctx: canvas.getContext("2d")!, live: false };
+    return { page: p, el, canvas, overlay, ctx: canvas.getContext("2d")!, live: false, res: 1 };
   });
   const add = h("button", { class: "add-sheet", title: "Seite hinzufügen" }, icon("plus"), "Seite hinzufügen");
   add.onclick = () => addPage(pages[pages.length - 1]);
@@ -633,6 +674,7 @@ function layoutSheets(): void {
     const fit = settings.scroll === "horizontal" ? Math.min(width, height * ratio) : Math.min(1000, width);
     s.el.style.width = `${Math.max(120, Math.round(fit * zoom))}px`;
   }
+  refreshResolution();
   const add = pagesEl.lastElementChild as HTMLElement | null;
   const last = sheets[sheets.length - 1];
   if (add && last) {
@@ -702,19 +744,53 @@ function renderAllSheets(): void {
 }
 
 let editingTextId: string | undefined;
+/**
+ * Pixels per page unit for a sheet: as sharp as the screen needs at the
+ * current zoom, but capped so a few live pages fit in iPad canvas memory.
+ */
+const MAX_SHEET_PIXELS = 10_000_000;
+function sheetRes(s: Sheet): number {
+  const area = pageW(s.page) * pageH(s.page);
+  const want = ((parseFloat(s.el.style.width) || pageW(s.page)) * (window.devicePixelRatio || 1)) / pageW(s.page);
+  // Steps of 1/4 avoid re-rendering for tiny zoom changes.
+  const cap = Math.floor(Math.sqrt(MAX_SHEET_PIXELS / area) * 4) / 4;
+  return Math.max(0.5, Math.min(Math.ceil(want * 4) / 4, cap));
+}
+let resTimer: ReturnType<typeof setTimeout> | undefined;
+let highlight: { page: Page; boxes: TextRun[] } | undefined;
+let highlightTimer: ReturnType<typeof setTimeout> | undefined;
+/** After zooming, re-render live pages whose resolution should change. */
+function refreshResolution(): void {
+  clearTimeout(resTimer);
+  resTimer = setTimeout(() => {
+    if (gesture) return refreshResolution();
+    for (const s of sheets) if (s.live && sheetRes(s) !== s.res) renderSheet(s);
+  }, 180);
+}
+
 function renderSheet(s: Sheet): void {
   if (!s.live) return;
   const p = s.page;
+  s.res = sheetRes(s);
   const w = Math.round(pageW(p));
   const hgt = Math.round(pageH(p));
-  if (s.canvas.width !== w || s.canvas.height !== hgt) {
-    s.canvas.width = w;
-    s.canvas.height = hgt;
+  const pw = Math.round(w * s.res);
+  const ph = Math.round(hgt * s.res);
+  if (s.canvas.width !== pw || s.canvas.height !== ph) {
+    s.canvas.width = pw;
+    s.canvas.height = ph;
   }
+  s.ctx.setTransform(s.res, 0, 0, s.res, 0, 0);
   const shown = editingTextId ? { ...p, texts: p.texts?.filter((t) => t.id !== editingTextId) } : p;
   const bg = p.background;
-  const key = bg && `${bg.attachment}:${bg.page}:${w}`;
+  const key = bg && `${bg.attachment}:${bg.page}:${pw}`;
   renderPage(s.ctx, shown, key ? pdfBitmaps.get(key) : undefined, images);
+  if (highlight?.page === p) {
+    s.ctx.save();
+    s.ctx.fillStyle = "#ffd60a66";
+    for (const b of highlight.boxes) s.ctx.fillRect(b.x - 6, b.y - 4, b.w + 12, b.h + 8);
+    s.ctx.restore();
+  }
   if (gesture?.sheet === s) drawOverlay(s);
   if (selected?.page === p) drawSelection(s);
   if (zoomWin?.page === p) {
@@ -728,11 +804,11 @@ function renderSheet(s: Sheet): void {
     s.ctx.restore();
   }
   if (bg && key && !pdfBitmaps.has(key)) {
-    renderPdfPage(bg.attachment, () => storage.getAttachment(bg.attachment), bg.page, w).then(
+    renderPdfPage(bg.attachment, () => storage.getAttachment(bg.attachment), bg.page, pw).then(
       (bitmap) => {
         pdfBitmaps.set(key, bitmap);
         // Keep only a handful of full-size backgrounds in memory.
-        while (pdfBitmaps.size > 12) pdfBitmaps.delete(pdfBitmaps.keys().next().value!);
+        while (pdfBitmaps.size > 6) pdfBitmaps.delete(pdfBitmaps.keys().next().value!);
         if (s.live) renderSheet(s);
       },
       (error) => toast(`PDF: ${(error as Error).message}`),
@@ -1422,7 +1498,9 @@ function drawLasers(now: number): void {
     const o = s.overlay;
     if (o.width !== s.canvas.width || o.height !== s.canvas.height) [o.width, o.height] = [s.canvas.width, s.canvas.height];
     const ctx = o.getContext("2d")!;
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.clearRect(0, 0, o.width, o.height);
+    ctx.setTransform(s.res, 0, 0, s.res, 0, 0);
     const holding = gesture?.kind === "laser" && gesture.sheet === s;
     const alive = trail.filter((q) => now - q.t < 650);
     if (holding && !alive.length && trail.length) alive.push(trail[trail.length - 1]);
@@ -2096,7 +2174,8 @@ function setScroll(mode: "vertical" | "horizontal"): void {
 $("share").onclick = (event) =>
   showMenu(event.currentTarget as HTMLElement, [
     { label: "Als PDF teilen oder sichern", action: () => void exportPdf() },
-    { label: "Drucken", action: () => void printNotebook() },
+    { label: "Als Kladde-Datei (zum Weitergeben)", action: () => current && void shareNotebooks([current], `${safeName(current.title)}.kladde.zip`) },
+    ...(isNativeIOS() ? [] : [{ label: "Drucken", action: () => void printNotebook() }]),
   ]);
 
 $("insert-image").onclick = () => $<HTMLInputElement>("image-file").click();
@@ -2155,21 +2234,39 @@ async function exportPdf(): Promise<void> {
     const pt = 595.28 / PAGE_WIDTH;
     pages.push({ jpeg: new Uint8Array(await blob.arrayBuffer()), pixelWidth: c.width, pixelHeight: c.height, width: pageW(p) * pt, height: pageH(p) * pt });
   }
-  const bytes = writePdf(pages);
-  const name = `${current.title.replace(/[\\/:*?"<>|]/g, "_")}.pdf`;
-  const file = new File([bytes.slice().buffer as ArrayBuffer], name, { type: "application/pdf" });
+  await shareFile(`${safeName(current.title)}.pdf`, writePdf(pages), "application/pdf");
+}
+
+const safeName = (title: string) => title.replace(/[\\/:*?"<>|]/g, "_").trim() || "Kladde";
+
+/** Native share sheet in the iOS app (see SceneDelegate.swift). */
+const nativeKladde = registerPlugin<NativeKladde>("Kladde");
+const isNativeIOS = () => (window as { Capacitor?: { getPlatform?: () => string } }).Capacitor?.getPlatform?.() === "ios";
+
+function base64(bytes: Uint8Array): string {
+  let out = "";
+  for (let i = 0; i < bytes.length; i += 0x8000) out += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return btoa(out);
+}
+
+/** Share sheet where there is one (iPad app, browsers with Web Share), else a download. */
+async function shareFile(name: string, bytes: Uint8Array, type: string): Promise<void> {
+  if (isNativeIOS()) {
+    try {
+      const result = await nativeKladde.share({ name, data: base64(bytes) });
+      return toast(result.completed ? "Geteilt" : "Abgebrochen");
+    } catch (error) {
+      console.warn("native share", error);
+    }
+  }
+  const file = new File([bytes.slice().buffer as ArrayBuffer], name, { type });
   try {
     if (navigator.canShare?.({ files: [file] })) {
-      await navigator.share({ files: [file], title: current.title });
+      await navigator.share({ files: [file], title: name });
       return toast("Geteilt");
     }
   } catch (error) {
     if ((error as Error).name === "AbortError") return toast("Abgebrochen");
-  }
-  if ("Capacitor" in window) {
-    // The app shells have no download folder for web pages; the print dialog can save as PDF.
-    toast("Teilen nicht verfügbar – Druckdialog geöffnet („Als PDF sichern“)");
-    return printNotebook();
   }
   const url = URL.createObjectURL(file);
   const a = h("a", { href: url, download: name });
@@ -2178,6 +2275,38 @@ async function exportPdf(): Promise<void> {
   a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 30_000);
   toast(`Gespeichert: ${name}`);
+}
+
+async function shareNotebooks(list: Notebook[], name: string): Promise<void> {
+  await storage.flush();
+  toast("Sicherung wird erstellt …", 10000);
+  const bytes = await createBackup(list, (id) => storage.getAttachment(id));
+  await shareFile(name, bytes, "application/zip");
+}
+
+async function backupAll(): Promise<void> {
+  const day = new Date().toISOString().slice(0, 10);
+  await shareNotebooks(notebooks.filter((nb) => !nb.purged), `Kladde-Sicherung-${day}.zip`);
+  settings.lastBackup = Date.now();
+  saveSettingsNow();
+}
+
+async function restoreFrom(bytes: Uint8Array): Promise<void> {
+  await storage.flush();
+  const result = restoreBackup(bytes, notebooks);
+  for (const [id, data] of result.attachments) await storage.putAttachment(id, data);
+  for (const nb of result.notebooks) {
+    const index = notebooks.findIndex((x) => x.id === nb.id);
+    if (index >= 0) notebooks[index] = nb;
+    else notebooks.push(nb);
+    if (current?.id === nb.id) current = nb;
+    await storage.put(nb);
+  }
+  scheduleSync();
+  toast(result.added || result.updated ? `Sicherung eingespielt: ${result.added} neu, ${result.updated} aktualisiert` : "Alles schon vorhanden", 4000);
+  if (!$("editor-view").hidden && current) buildSheets();
+  renderLibrary();
+  renderTabs();
 }
 
 async function printNotebook(): Promise<void> {
@@ -2211,7 +2340,16 @@ async function importFiles(files: File[]): Promise<void> {
   let last: Notebook | undefined;
   const items = [];
   for (const file of files) {
-    const found = expandImport(file.name, new Uint8Array(await file.arrayBuffer()));
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    if (isBackup(bytes)) {
+      try {
+        await restoreFrom(bytes);
+      } catch (error) {
+        toast(`Sicherung nicht lesbar: ${(error as Error).message}`, 5000);
+      }
+      continue;
+    }
+    const found = expandImport(file.name, bytes);
     if (!found.length) {
       failed++;
       status(`Nicht erkannt: ${file.name}`);
@@ -2242,6 +2380,7 @@ async function importFiles(files: File[]): Promise<void> {
       status(`Import fehlgeschlagen: ${item.title}: ${(error as Error).message}`);
     }
   }
+  if (!items.length && !failed) return;
   scheduleSync();
   toast(failed ? `${done} importiert, ${failed} fehlgeschlagen (Details links unten)` : `${done} importiert`, 4000);
   if (done === 1 && last) openNotebook(last);
@@ -2281,9 +2420,21 @@ function openSettings(): void {
   (field("tapUndo") as HTMLInputElement).checked = settings.tapUndo;
   (field("holdToShape") as HTMLInputElement).checked = settings.holdToShape;
   (field("scribbleErase") as HTMLInputElement).checked = settings.scribbleErase;
+  $("backup-hint").dataset.last = settings.lastBackup ? `Letzte Sicherung: ${formatDate(settings.lastBackup)}` : "Noch keine Sicherung erstellt.";
   const account = loadAccount();
   for (const name of ["server", "user", "appPassword", "folder"] as const) field(name).value = account?.[name] ?? (name === "folder" ? "Kladde" : "");
   settingsDialog.showModal();
+}
+$("backup-now").onclick = () => void backupAll().then(() => ($("backup-hint").dataset.last = `Letzte Sicherung: ${formatDate(settings.lastBackup)}`));
+$("backup-restore").onclick = () => {
+  settingsDialog.close();
+  $<HTMLInputElement>("import-file").click();
+};
+/** Without Nextcloud the iPad holds the only copy; remind once a fortnight. */
+function backupReminder(): void {
+  if (loadAccount() || !liveNotebooks().some((nb) => nb.pages.some((p) => p.strokes.length > 0))) return;
+  if (Date.now() - settings.lastBackup < 14 * 86_400_000) return;
+  status(settings.lastBackup ? "Letzte Sicherung ist über zwei Wochen alt – Einstellungen → Sicherung erstellen." : "Noch keine Sicherung – Einstellungen → Sicherung erstellen.");
 }
 settingsDialog.addEventListener("close", () => {
   if (settingsDialog.returnValue === "welcome") return showWelcome();
@@ -2346,6 +2497,7 @@ async function sync(): Promise<void> {
   status("Synchronisiere …");
   $("lib-sync").classList.add("active");
   try {
+    await storage.flush();
     const synced = await syncNotebooks(structuredClone(notebooks), new WebDav(account), {
       get: (id) => storage.getAttachment(id),
       put: (id, bytes) => storage.putAttachment(id, bytes),
@@ -2381,9 +2533,24 @@ $("lib-sync").onclick = () => (loadAccount() ? void sync() : openSettings());
 document.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "hidden") {
     finishTextEdit();
+    void storage.flush();
     if (syncTimer !== undefined) void sync();
   }
 });
+window.addEventListener("pagehide", () => void storage.flush());
+window.addEventListener("beforeunload", (event) => {
+  if (!storage.unsaved) return;
+  void storage.flush();
+  event.preventDefault();
+});
+storage.onError(
+  (error) => {
+    status(`Speichern fehlgeschlagen: ${(error as Error)?.message ?? error}`);
+    toast("Speichern fehlgeschlagen – wird erneut versucht. Ist der Speicher voll?", 6000);
+    setTimeout(() => void storage.flush(), 5000);
+  },
+  () => status(""),
+);
 window.addEventListener("online", () => void sync());
 
 // Installed web app only; the Electron and Capacitor shells ship their files.
@@ -2414,6 +2581,135 @@ stage.addEventListener(
   { passive: false },
 );
 
+// ---------------------------------------------------------------------------
+// Search: typed text, PDF text and (in the iPad app) recognised handwriting
+
+const textIndex = new Map<string, IndexEntry>();
+interface NativeKladde {
+  share(options: { name: string; data: string }): Promise<{ completed: boolean }>;
+  recognize(options: { data: string; languages: string[] }): Promise<{ lines: TextRun[] }>;
+}
+/** Handwriting recognition; replaced in tests. */
+let recognizeInk: ((png: string) => Promise<TextRun[]>) | undefined = isNativeIOS()
+  ? async (png) => (await nativeKladde.recognize({ data: png, languages: ["de-DE", "en-US"] })).lines
+  : undefined;
+let indexTimer: ReturnType<typeof setTimeout> | undefined;
+let indexing = false;
+function scheduleIndex(delay = 2500): void {
+  clearTimeout(indexTimer);
+  indexTimer = setTimeout(() => void runIndex(), delay);
+}
+const hasInk = (p: Page) => p.strokes.some((s) => s.tool !== "highlighter");
+
+/** The next page that needs indexing, the open notebook first. */
+function nextIndexJob(): (() => Promise<void>) | undefined {
+  const order = current && !current.deleted ? [current, ...liveNotebooks().filter((nb) => nb !== current)] : liveNotebooks();
+  for (const nb of order)
+    for (const p of visiblePages(nb)) {
+      const pk = pdfKey(p);
+      if (pk && !textIndex.has(pk)) return () => indexPdf(p, pk);
+      const entry = textIndex.get(inkKey(p));
+      if (entry?.at === p.updatedAt) continue;
+      if (recognizeInk && hasInk(p)) return () => indexInk(p);
+      if (entry?.runs.length && !hasInk(p)) return () => saveIndex({ key: inkKey(p), at: p.updatedAt, runs: [] });
+    }
+  return undefined;
+}
+async function saveIndex(entry: IndexEntry): Promise<void> {
+  textIndex.set(entry.key, entry);
+  await storage.putIndex(entry).catch(() => {});
+}
+async function indexPdf(p: Page, key: string): Promise<void> {
+  const bg = p.background!;
+  const runs = await pdfPageText(bg.attachment, () => storage.getAttachment(bg.attachment), bg.page, pageW(p)).catch(() => []);
+  await saveIndex({ key, at: 0, runs });
+}
+async function indexInk(p: Page): Promise<void> {
+  const at = p.updatedAt;
+  const w = Math.round(pageW(p));
+  const hgt = Math.round(pageH(p));
+  const c = h("canvas", { width: String(w), height: String(hgt) }) as HTMLCanvasElement;
+  const ctx = c.getContext("2d")!;
+  // Ink only, dark on white: lines, PDFs and typed text would confuse recognition.
+  renderPage(ctx, { ...p, template: "blank", paper: undefined, background: undefined, images: undefined, texts: undefined, flow: undefined, strokes: p.strokes.filter((s) => s.tool !== "highlighter") });
+  const png = c.toDataURL("image/png").split(",")[1];
+  const lines = await recognizeInk!(png).catch((error) => {
+    console.warn("recognize", error);
+    return [] as TextRun[];
+  });
+  // Vision reports boxes in 0…1 of the image.
+  await saveIndex({ key: inkKey(p), at, runs: lines.map((l) => ({ text: l.text, x: l.x * w, y: l.y * hgt, w: l.w * w, h: l.h * hgt })) });
+}
+async function runIndex(): Promise<void> {
+  if (indexing) return;
+  if (gesture || textEdit || document.visibilityState === "hidden") return scheduleIndex();
+  const job = nextIndexJob();
+  if (!job) return renderSearchStatus();
+  indexing = true;
+  try {
+    await job();
+  } finally {
+    indexing = false;
+  }
+  renderSearchStatus();
+  scheduleIndex(120);
+}
+
+const searchPanel = $("search-panel");
+const searchInput = $<HTMLInputElement>("search-input");
+$("find").onclick = () => {
+  if (!searchPanel.hidden) return closeSearch();
+  searchPanel.hidden = false;
+  searchInput.focus();
+  searchInput.select();
+  renderSearch();
+};
+$("search-close").onclick = () => closeSearch();
+function closeSearch(): void {
+  searchPanel.hidden = true;
+  clearHighlight();
+}
+searchInput.oninput = () => renderSearch();
+searchInput.onkeydown = (event) => {
+  if (event.key === "Escape") closeSearch();
+  if (event.key === "Enter") ($("search-results").firstElementChild as HTMLElement | null)?.click();
+};
+function renderSearch(): void {
+  if (!current) return;
+  const hits = searchNotebook(current, searchInput.value, textIndex);
+  $("search-results").replaceChildren(
+    ...hits.map((hit) => {
+      const row = h("button", { class: "hit" }, h("b", {}, `S. ${hit.index + 1}`), h("span", {}, hit.snippet || hit.page.title || ""));
+      row.onclick = () => showHit(hit);
+      return row;
+    }),
+  );
+  renderSearchStatus(hits.length);
+}
+function renderSearchStatus(count?: number): void {
+  if (searchPanel.hidden || !current) return;
+  const pending = visiblePages(current).filter((p) => (p.background && !textIndex.has(pdfKey(p)!)) || (recognizeInk && hasInk(p) && textIndex.get(inkKey(p))?.at !== p.updatedAt)).length;
+  const parts = [];
+  if (searchInput.value.trim()) parts.push(count === undefined ? "" : count ? `${count} ${count === 1 ? "Seite" : "Seiten"}` : "Nichts gefunden");
+  if (pending) parts.push(`${pending} Seiten werden noch gelesen …`);
+  if (!recognizeInk) parts.push("Handschrift wird nur in der iPad-App erkannt.");
+  $("search-status").textContent = parts.filter(Boolean).join(" · ");
+}
+function showHit(hit: PageHit): void {
+  clearHighlight();
+  scrollToPage(hit.index, true);
+  if (!hit.boxes.length) return;
+  highlight = { page: hit.page, boxes: hit.boxes };
+  renderSheetOf(hit.page);
+  highlightTimer = setTimeout(clearHighlight, 6000);
+}
+function clearHighlight(): void {
+  clearTimeout(highlightTimer);
+  const p = highlight?.page;
+  highlight = undefined;
+  if (p) renderSheetOf(p);
+}
+
 // Debug and test hook: exposes state for automated UI tests.
 (window as unknown as { kladde: unknown }).kladde = {
   get notebooks() {
@@ -2435,6 +2731,14 @@ stage.addEventListener(
     return selected;
   },
   settings,
+  storage,
+  openNotebook: (nb: Notebook) => openNotebook(nb),
+  restoreFrom,
+  textIndex,
+  setRecognizer: (fn: typeof recognizeInk) => {
+    recognizeInk = fn;
+    scheduleIndex(50);
+  },
   undoDepth: () => undoStack.length,
   get zoomWin() {
     return zoomWin;
@@ -2448,7 +2752,10 @@ stage.addEventListener(
 };
 
 void (async () => {
+  void persistStorage();
   notebooks = await storage.all();
+  for (const entry of await storage.allIndex<IndexEntry>().catch(() => [])) textIndex.set(entry.key, entry);
+  scheduleIndex(4000);
   if (liveNotebooks().length === 0) {
     const nb = newNotebook("Mein erstes Notizbuch");
     notebooks.push(nb);
@@ -2460,5 +2767,6 @@ void (async () => {
   else showLibrary();
   updateUndoButtons();
   if (!settings.welcomeSeen) showWelcome();
+  backupReminder();
   void sync();
 })();

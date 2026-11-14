@@ -7,6 +7,41 @@ const documents = new Map<string, Promise<pdfjs.PDFDocumentProxy>>();
 const pages = new Map<string, Promise<HTMLCanvasElement>>();
 const MAX_CACHED_PAGES = 16;
 
+function documentOf(attachment: string, load: () => Promise<Uint8Array | undefined>): Promise<pdfjs.PDFDocumentProxy> {
+  let doc = documents.get(attachment);
+  if (!doc) {
+    doc = load().then((bytes) => {
+      if (!bytes) throw new Error(`attachment ${attachment} is missing`);
+      // pdf.js transfers the buffer to its worker; keep the caller's copy intact.
+      return pdfjs.getDocument({ data: bytes.slice() }).promise;
+    });
+    documents.set(attachment, doc);
+    doc.catch(() => documents.delete(attachment));
+  }
+  return doc;
+}
+
+/** Text runs of a PDF page with their boxes, in a page `width` units wide. */
+export async function pdfPageText(
+  attachment: string,
+  load: () => Promise<Uint8Array | undefined>,
+  pageIndex: number,
+  width: number,
+): Promise<{ text: string; x: number; y: number; w: number; h: number }[]> {
+  const pdfPage = await (await documentOf(attachment, load)).getPage(pageIndex + 1);
+  const viewport = pdfPage.getViewport({ scale: width / pdfPage.getViewport({ scale: 1 }).width });
+  const content = await pdfPage.getTextContent();
+  const runs = [];
+  for (const item of content.items) {
+    if (!("str" in item) || !item.str.trim()) continue;
+    const [e, f] = [item.transform[4], item.transform[5]];
+    const height = item.height || Math.hypot(item.transform[2], item.transform[3]);
+    const [x1, y1, x2, y2] = viewport.convertToViewportRectangle([e, f, e + item.width, f + height]);
+    runs.push({ text: item.str, x: Math.min(x1, x2), y: Math.min(y1, y2), w: Math.abs(x2 - x1), h: Math.abs(y2 - y1) });
+  }
+  return runs;
+}
+
 /**
  * Renders one PDF page at the given pixel width. Results are cached per
  * attachment, page and width, so redraws while writing stay cheap.
@@ -25,16 +60,7 @@ export function renderPdfPage(
     pages.set(key, page);
   } else {
     page = (async () => {
-      let doc = documents.get(attachment);
-      if (!doc) {
-        doc = load().then((bytes) => {
-          if (!bytes) throw new Error(`attachment ${attachment} is missing`);
-          // pdf.js transfers the buffer to its worker; keep the caller's copy intact.
-          return pdfjs.getDocument({ data: bytes.slice() }).promise;
-        });
-        documents.set(attachment, doc);
-      }
-      const pdfPage = await (await doc).getPage(pageIndex + 1);
+      const pdfPage = await (await documentOf(attachment, load)).getPage(pageIndex + 1);
       const base = pdfPage.getViewport({ scale: 1 });
       const viewport = pdfPage.getViewport({ scale: width / base.width });
       const canvas = document.createElement("canvas");

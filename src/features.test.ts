@@ -1,5 +1,6 @@
 import { zipSync } from "fflate";
 import { describe, expect, it } from "vitest";
+import { createBackup, isBackup, restoreBackup } from "./backup";
 import { expandImport, joinFolder, notebookFromPdf } from "./bundle";
 import { copySelection, eraseAt, pasteClip, recolorSelection, rotateSelection, scribbleTargets } from "./edit";
 import { penFactor } from "./ink";
@@ -7,6 +8,8 @@ import { newNotebook, newPage, PAGE_WIDTH, visiblePages, type Point, type Stroke
 import { duplicatePage, insertPage, insertPageAt, movePage, pageLike } from "./pages";
 import { writePdf } from "./pdfwrite";
 import { DEFAULTS, withDefaults } from "./settings";
+import { joinNotebooks, splitNotebook } from "./storage";
+import { inkKey, normalize, pdfKey, searchNotebook, type IndexEntry } from "./search";
 
 const pt = (x: number, y: number): Point => ({ x, y, p: 0.5 });
 const stroke = (id: string, points: Point[], tool: Stroke["tool"] = "pen"): Stroke => ({ id, tool, color: "#000", width: 2, points });
@@ -194,5 +197,78 @@ describe("pen types", () => {
   it("ball pen ignores pressure, brush reacts strongly", () => {
     expect(penFactor("ball", 0.1)).toBe(penFactor("ball", 1));
     expect(penFactor("brush", 1) / penFactor("brush", 0.1)).toBeGreaterThan(penFactor("fountain", 1) / penFactor("fountain", 0.1));
+  });
+});
+
+describe("backup", () => {
+  it("round-trips notebooks and attachments and merges without losing newer edits", async () => {
+    const nb = newNotebook("Physik", 100);
+    nb.pages[0].background = { attachment: "pdf1", page: 0 };
+    nb.pages[0].strokes = [stroke("old", [pt(1, 1)])];
+    const store = new Map([["pdf1", new Uint8Array([37, 80, 68, 70])]]);
+    const zip = await createBackup([nb], async (id) => store.get(id));
+    expect(isBackup(zip)).toBe(true);
+    expect(isBackup(zipSync({ "a.goodnotes": new Uint8Array([1]) }))).toBe(false);
+
+    // Into an empty app: everything comes back.
+    const fresh = restoreBackup(zip, []);
+    expect(fresh.added).toBe(1);
+    expect(fresh.notebooks[0].pages[0].strokes[0].id).toBe("old");
+    expect([...fresh.attachments.get("pdf1")!]).toEqual([37, 80, 68, 70]);
+
+    // Into an app where the page was edited later: the edit survives, a missing page returns.
+    const live = structuredClone(nb);
+    live.pages[0].strokes = [stroke("new", [pt(2, 2)])];
+    live.pages[0].updatedAt = 200;
+    const extra = newPage("blank", 150);
+    const withExtra = { ...structuredClone(nb), pages: [...nb.pages, extra], updatedAt: 150 };
+    const merged = restoreBackup(await createBackup([withExtra], async (id) => store.get(id)), [live]);
+    expect(merged.updated).toBe(1);
+    expect(merged.notebooks[0].pages[0].strokes[0].id).toBe("new");
+    expect(merged.notebooks[0].pages.map((p) => p.id)).toContain(extra.id);
+    expect(restoreBackup(zip, [live]).updated).toBe(0);
+  });
+});
+
+describe("storage records", () => {
+  it("splits notebooks into pages and joins them back in order", () => {
+    const nb = newNotebook("x");
+    nb.pages.push(newPage("grid"), newPage("blank"));
+    const { meta, pages } = splitNotebook(nb);
+    expect(meta.pages).toEqual([]);
+    expect(pages).toHaveLength(3);
+    const shuffled = [pages[2], pages[0], pages[1]].map(([, v]) => v);
+    expect(joinNotebooks([meta], shuffled)).toEqual([nb]);
+    // Old records with inline pages still load.
+    expect(joinNotebooks([nb], [])).toEqual([nb]);
+  });
+});
+
+describe("search", () => {
+  it("finds typed text, PDF text and handwriting, ignoring case and accents", () => {
+    const nb = newNotebook("x");
+    const [p1] = nb.pages;
+    p1.texts = [{ id: "t", x: 10, y: 20, width: 300, text: "Größe der Kraft", fontSize: 20, color: "#000" }];
+    const p2 = { ...newPage("blank"), background: { attachment: "a", page: 3 } };
+    const p3 = newPage("lined");
+    nb.pages.push(p2, { ...newPage("blank"), deleted: true }, p3);
+    const index = new Map<string, IndexEntry>([
+      [pdfKey(p2)!, { key: pdfKey(p2)!, at: 0, runs: [{ text: "Newtonsche ", x: 1, y: 2, w: 3, h: 4 }, { text: "Gesetze", x: 5, y: 2, w: 3, h: 4 }] }],
+      [inkKey(p3), { key: inkKey(p3), at: p3.updatedAt, runs: [{ text: "Impulserhaltung", x: 7, y: 8, w: 9, h: 10 }] }],
+    ]);
+    expect(searchNotebook(nb, "GROSSE", index).map((h) => h.index)).toEqual([0]);
+    expect(searchNotebook(nb, "grosse", index).map((h) => h.index)).toEqual([0]);
+    expect(searchNotebook(nb, "größe", index).map((h) => h.index)).toEqual([0]);
+    expect(searchNotebook(nb, "kräft", index).map((h) => h.index)).toEqual([0]);
+    // Across PDF text fragments.
+    const pdf = searchNotebook(nb, "newtonsche gesetze", index);
+    expect(pdf.map((h) => h.index)).toEqual([1]);
+    expect(pdf[0].boxes.length).toBeGreaterThan(0);
+    // Deleted pages do not count towards the page number.
+    const ink = searchNotebook(nb, "impuls", index);
+    expect(ink.map((h) => h.index)).toEqual([2]);
+    expect(ink[0].boxes[0]).toMatchObject({ x: 7, y: 8 });
+    expect(ink[0].snippet).toBe("Impulserhaltung");
+    expect(normalize("Ärger  über")).toBe("arger uber");
   });
 });

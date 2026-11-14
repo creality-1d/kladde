@@ -27,6 +27,7 @@
           <button data-section="all" class="active"><span data-icon="docs"></span>Dokumente</button>
           <button data-section="recent"><span data-icon="clock"></span>Zuletzt</button>
           <button data-section="favorites"><span data-icon="star"></span>Favoriten</button>
+          <button data-section="trash"><span data-icon="trash"></span>Papierkorb</button>
           <p id="status"></p>
         </nav>
         <div id="grid-scroll"><div id="grid"></div><p id="grid-empty" hidden></p></div>
@@ -43,6 +44,7 @@
         <div id="tabs"></div>
         <div class="bar-right">
           <span id="page-label"></span>
+          <button id="find" class="icon" title="Suchen (auch Handschrift und PDF-Text)" data-icon="search"></button>
           <button id="add-page" class="icon" title="Seite hinzufügen" data-icon="plus"></button>
           <button id="share" class="icon" title="Teilen und exportieren" data-icon="share"></button>
           <button id="more" class="icon" title="Mehr" data-icon="more"></button>
@@ -79,6 +81,14 @@
         </aside>
         <div id="stage"><div id="pages"></div></div>
         <div id="ruler" hidden><span id="ruler-angle"></span></div>
+      </div>
+      <div id="search-panel" hidden>
+        <div class="search-row">
+          <input id="search-input" type="search" placeholder="In diesem Notizbuch suchen" autocomplete="off" />
+          <button id="search-close" class="icon" title="Schließen" data-icon="close"></button>
+        </div>
+        <p id="search-status" class="hint"></p>
+        <div id="search-results"></div>
       </div>
       <div id="zoom-panel" hidden>
         <div class="zoom-controls">
@@ -122,6 +132,14 @@
           <label class="check"><input type="checkbox" name="tapUndo" /> Mit zwei Fingern tippen: rückgängig, mit drei: wiederholen</label>
           <label class="check"><input type="checkbox" name="holdToShape" /> Am Strichende kurz halten: Form begradigen</label>
           <label class="check"><input type="checkbox" name="scribbleErase" /> Wegkritzeln radiert, was darunter liegt</label>
+        </fieldset>
+        <fieldset>
+          <legend>Datensicherung</legend>
+          <p class="hint" id="backup-hint">Eine Sicherung enthält alle Notizbücher mit PDFs und Bildern als eine ZIP-Datei. Zum Einspielen die Datei über „Importieren“ öffnen.</p>
+          <div class="row">
+            <button type="button" id="backup-now">Sicherung erstellen</button>
+            <button type="button" id="backup-restore">Sicherung einspielen …</button>
+          </div>
         </fieldset>
         <fieldset>
           <legend>Nextcloud</legend>
