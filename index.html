@@ -61,6 +61,10 @@
           <button data-tool="lasso" class="icon" title="Lasso" data-icon="lasso"></button>
           <button id="insert-image" class="icon" title="Bild einfügen" data-icon="image"></button>
           <button data-tool="text" class="icon" title="Text" data-icon="text"></button>
+          <button data-tool="laser" class="icon" title="Laserpointer" data-icon="laser"></button>
+          <span class="divider"></span>
+          <button id="toggle-ruler" class="icon" title="Lineal" data-icon="ruler"></button>
+          <button id="toggle-zoom" class="icon" title="Zoom-Fenster" data-icon="zoomwin"></button>
         </div>
         <div class="group" id="context"></div>
       </nav>
@@ -74,6 +78,18 @@
           <div id="sidebar-list"></div>
         </aside>
         <div id="stage"><div id="pages"></div></div>
+        <div id="ruler" hidden><span id="ruler-angle"></span></div>
+      </div>
+      <div id="zoom-panel" hidden>
+        <div class="zoom-controls">
+          <button id="zoom-prev" class="icon" title="Zurück" data-icon="prev"></button>
+          <button id="zoom-next" class="icon" title="Weiter" data-icon="next"></button>
+          <button id="zoom-newline" class="icon" title="Neue Zeile" data-icon="newline"></button>
+          <span class="spacer"></span>
+          <label class="zoom-factor">Vergrößerung <input id="zoom-factor" type="range" min="1.5" max="5" step="0.5" /></label>
+          <button id="zoom-close" class="icon" title="Zoom-Fenster schließen" data-icon="close"></button>
+        </div>
+        <canvas id="zoom-canvas"></canvas>
       </div>
     </section>
 
@@ -105,6 +121,7 @@
           </label>
           <label class="check"><input type="checkbox" name="tapUndo" /> Mit zwei Fingern tippen: rückgängig, mit drei: wiederholen</label>
           <label class="check"><input type="checkbox" name="holdToShape" /> Am Strichende kurz halten: Form begradigen</label>
+          <label class="check"><input type="checkbox" name="scribbleErase" /> Wegkritzeln radiert, was darunter liegt</label>
         </fieldset>
         <fieldset>
           <legend>Nextcloud</legend>
@@ -130,11 +147,13 @@
           <li><b>Mit zwei Fingern tippen</b>: rückgängig, <b>mit drei Fingern</b>: wiederholen</li>
           <li><b>Apple Pencil doppelt antippen</b>: Radierer (oder was in den iPad-Einstellungen gewählt ist)</li>
           <li><b>Strich am Ende kurz halten</b>: wird zur geraden Linie, zum Rechteck oder Kreis</li>
+          <li><b>Wegkritzeln</b>: radiert, was darunter geschrieben steht</li>
+          <li><b>Füller, Kugelschreiber, Pinsel</b>, Lineal, Zoom-Fenster und Laserpointer in der Werkzeugleiste</li>
           <li><b>Drei Farben und drei Stärken</b> pro Werkzeug rechts in der Leiste; nochmal tippen ändert sie</li>
           <li><b>Seiten untereinander</b> scrollen, mit zwei Fingern zoomen; Seitenübersicht oben links</li>
         </ul>
         <h3>Notizen mitnehmen</h3>
-        <p>In Goodnotes ein Notizbuch oder mehrere auswählen, <b>Teilen → Exportieren</b> und als Format <b>Goodnotes</b> wählen. Die Dateien (auch als ZIP mit Ordnern) und PDFs hier importieren:</p>
+        <p>In Goodnotes in der Dokumentübersicht <b>Auswählen</b> tippen, Notizbücher oder Ordner markieren, <b>Exportieren</b> und als Format <b>Goodnotes</b> wählen. Die exportierten Dateien (auch als ZIP mit Ordnern) und PDFs hier importieren:</p>
         <p><button value="import" class="primary">Goodnotes-Dateien importieren</button></p>
         <label class="check"><input type="checkbox" name="penOnly" checked /> Nur der Apple Pencil zeichnet, Finger scrollen</label>
         <menu><span class="spacer"></span><button value="done" class="primary">Los geht's</button></menu>
@@ -145,12 +164,33 @@
       <form method="dialog">
         <h2>Neues Notizbuch</h2>
         <label>Name <input name="title" value="Neues Notizbuch" required /></label>
+        <span class="field-label">Deckblatt</span>
+        <div class="covers">
+          <label><input type="radio" name="cover" value="" checked /><span class="cover-chip none">Erste Seite</span></label>
+          <label><input type="radio" name="cover" value="#2f4b7c" /><span class="cover-chip" style="background:#2f4b7c"></span></label>
+          <label><input type="radio" name="cover" value="#3d7a5a" /><span class="cover-chip" style="background:#3d7a5a"></span></label>
+          <label><input type="radio" name="cover" value="#a8483b" /><span class="cover-chip" style="background:#a8483b"></span></label>
+          <label><input type="radio" name="cover" value="#c7922f" /><span class="cover-chip" style="background:#c7922f"></span></label>
+          <label><input type="radio" name="cover" value="#6c4f8c" /><span class="cover-chip" style="background:#6c4f8c"></span></label>
+          <label><input type="radio" name="cover" value="#3a3f46" /><span class="cover-chip" style="background:#3a3f46"></span></label>
+        </div>
+        <span class="field-label">Papier</span>
         <div class="papers">
           <label><input type="radio" name="template" value="lined" checked /><span class="paper lined"></span>Liniert</label>
+          <label><input type="radio" name="template" value="wide" /><span class="paper wide"></span>Liniert weit</label>
           <label><input type="radio" name="template" value="grid" /><span class="paper grid"></span>Kariert</label>
+          <label><input type="radio" name="template" value="smallgrid" /><span class="paper smallgrid"></span>Kariert klein</label>
           <label><input type="radio" name="template" value="dotted" /><span class="paper dotted"></span>Gepunktet</label>
+          <label><input type="radio" name="template" value="cornell" /><span class="paper cornell"></span>Cornell</label>
           <label><input type="radio" name="template" value="blank" /><span class="paper blank"></span>Blanko</label>
         </div>
+        <label>Papierfarbe
+          <select name="paper">
+            <option value="white">Weiß</option>
+            <option value="cream">Creme</option>
+            <option value="dark">Dunkel</option>
+          </select>
+        </label>
         <label>Format
           <select name="format">
             <option value="portrait">A4 Hochformat</option>

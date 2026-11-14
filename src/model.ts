@@ -1,5 +1,7 @@
-export type Tool = "pen" | "highlighter" | "eraser" | "text" | "lasso" | "shape";
-export type Template = "blank" | "lined" | "grid" | "dotted";
+export type Tool = "pen" | "highlighter" | "eraser" | "text" | "lasso" | "shape" | "laser";
+export type Template = "blank" | "lined" | "grid" | "dotted" | "smallgrid" | "cornell" | "wide";
+export type PaperColor = "white" | "cream" | "dark";
+export type PenType = "fountain" | "ball" | "brush";
 
 export interface Point {
   x: number;
@@ -14,6 +16,8 @@ export interface Stroke {
   color: string;
   width: number;
   points: Point[];
+  /** Ink style of pen strokes; fountain when missing. */
+  pen?: PenType;
 }
 
 export interface TextBox {
@@ -26,6 +30,8 @@ export interface TextBox {
   fontSize: number;
   color: string;
   bold?: boolean;
+  /** Clockwise rotation in radians around the box centre. */
+  rotation?: number;
 }
 
 export interface PageImage {
@@ -43,6 +49,7 @@ export interface PageImage {
 export interface Page {
   id: string;
   template: Template;
+  paper?: PaperColor;
   strokes: Stroke[];
   updatedAt: number;
   deleted?: boolean;
@@ -70,6 +77,8 @@ export interface Notebook {
   updatedAt: number;
   deleted?: boolean;
   favorite?: boolean;
+  /** Cover colour shown in the library; the first page is shown when missing. */
+  cover?: string;
 }
 
 export const PAGE_WIDTH = 1404;

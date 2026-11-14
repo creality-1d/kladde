@@ -1,15 +1,30 @@
-import { PAGE_HEIGHT, PAGE_WIDTH, type Page, type Point, type Stroke, type Template, type TextBox } from "./model";
+import { PAGE_HEIGHT, PAGE_WIDTH, type Page, type PaperColor, type PenType, type Point, type Stroke, type Template, type TextBox } from "./model";
 
-export function drawTemplate(ctx: CanvasRenderingContext2D, template: Template, width = ctx.canvas.width, height = ctx.canvas.height): void {
-  ctx.fillStyle = "#fff";
+export const PAPER_COLORS: Record<PaperColor, { fill: string; line: string; dot: string }> = {
+  white: { fill: "#ffffff", line: "#c9d6e3", dot: "#b8c4d0" },
+  cream: { fill: "#fbf6e6", line: "#ddd2b0", dot: "#cdbf98" },
+  dark: { fill: "#23272c", line: "#3c444d", dot: "#4a535d" },
+};
+
+export function drawTemplate(ctx: CanvasRenderingContext2D, template: Template, width = ctx.canvas.width, height = ctx.canvas.height, paper: PaperColor = "white"): void {
+  const colors = PAPER_COLORS[paper] ?? PAPER_COLORS.white;
+  ctx.fillStyle = colors.fill;
   ctx.fillRect(0, 0, width, height);
-  const step = 52;
-  ctx.strokeStyle = "#c9d6e3";
-  ctx.fillStyle = "#b8c4d0";
+  const step = template === "smallgrid" ? 26 : template === "wide" ? 72 : 52;
+  ctx.strokeStyle = colors.line;
+  ctx.fillStyle = colors.dot;
   ctx.lineWidth = 1.5;
-  if (template === "lined") {
+  if (template === "lined" || template === "wide" || template === "cornell") {
     for (let y = step * 3; y < height; y += step) line(ctx, 0, y, width, y);
-  } else if (template === "grid") {
+  }
+  if (template === "cornell") {
+    // Cue column on the left, summary area at the bottom.
+    ctx.lineWidth = 3;
+    const summary = Math.round((height * 0.8) / step) * step;
+    line(ctx, width * 0.28, step * 2, width * 0.28, summary);
+    line(ctx, 0, summary, width, summary);
+    line(ctx, 0, step * 2, width, step * 2);
+  } else if (template === "grid" || template === "smallgrid") {
     for (let x = step; x < width; x += step) line(ctx, x, 0, x, height);
     for (let y = step; y < height; y += step) line(ctx, 0, y, width, y);
   } else if (template === "dotted") {
@@ -52,6 +67,13 @@ export function drawStroke(ctx: CanvasRenderingContext2D, stroke: Stroke): void 
   ctx.restore();
 }
 
+/** Width multiplier for a pen type at pressure p in [0, 1]. */
+export function penFactor(pen: PenType | undefined, p: number): number {
+  if (pen === "ball") return 0.9;
+  if (pen === "brush") return 0.15 + p * p * 2.6;
+  return 0.4 + p * 1.2;
+}
+
 /**
  * Draws pen segments from point index `from` on. While writing, only the new
  * segments are drawn on top of the page instead of redrawing everything.
@@ -67,7 +89,7 @@ export function drawPenSegments(ctx: CanvasRenderingContext2D, stroke: Stroke, f
     for (let i = Math.max(1, from); i < pts.length; i++) {
       const a = pts[i - 1];
       const b = pts[i];
-      ctx.lineWidth = stroke.width * (0.4 + b.p * 1.2);
+      ctx.lineWidth = stroke.width * penFactor(stroke.pen, b.p);
       ctx.beginPath();
       ctx.moveTo(a.x, a.y);
       ctx.quadraticCurveTo(a.x, a.y, (a.x + b.x) / 2, (a.y + b.y) / 2);
@@ -87,7 +109,7 @@ export function renderPage(
   // Drawn in page units; callers scale the context for thumbnails.
   const width = page.width ?? PAGE_WIDTH;
   const height = page.height ?? PAGE_HEIGHT;
-  drawTemplate(ctx, page.template, width, height);
+  drawTemplate(ctx, page.template, width, height, page.paper);
   if (background) ctx.drawImage(background, 0, 0, width, height);
   for (const image of page.images ?? []) {
     const bitmap = images?.get(image.attachment);
@@ -143,6 +165,13 @@ export function wrapText(ctx: CanvasRenderingContext2D, text: TextBox): string[]
 
 export function drawText(ctx: CanvasRenderingContext2D, text: TextBox): void {
   ctx.save();
+  if (text.rotation) {
+    const cx = text.x + text.width / 2;
+    const cy = text.y + textHeight(ctx, text) / 2;
+    ctx.translate(cx, cy);
+    ctx.rotate(text.rotation);
+    ctx.translate(-cx, -cy);
+  }
   ctx.fillStyle = text.color;
   ctx.textBaseline = "top";
   wrapText(ctx, text).forEach((line, i) => ctx.fillText(line.replace(/\t/g, "    "), text.x, text.y + i * text.fontSize * LINE_HEIGHT));

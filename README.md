@@ -9,12 +9,15 @@ Kladde ist eine eigenständige App. Sie enthält keinen Code und keine Gestaltun
 Kladde ist so aufgebaut, dass man von Goodnotes ohne Umgewöhnung weiterarbeiten kann: dieselbe Anordnung (Bibliothek mit Deckblättern, Werkzeugleiste oben, Farben und Stärken rechts, Seitenübersicht links) und dieselben Gesten. Icons und Gestaltung sind eigene. Ein Vergleich mit Goodnotes 6 steht in [docs/goodnotes-vergleich.md](docs/goodnotes-vergleich.md).
 
 **Schreiben**
-- Stift mit Druckempfindlichkeit (Apple Pencil, S Pen, Grafiktabletts), Textmarker, Radierer, Formen, Lasso, Bild, Text
+- Stift mit Druckempfindlichkeit (Apple Pencil, S Pen, Grafiktabletts) als Füller, Kugelschreiber oder Pinsel; Textmarker, Radierer, Formen, Lasso, Bild, Text, Laserpointer
 - Drei Lieblingsfarben und drei Strichstärken pro Werkzeug; nochmal tippen ändert Farbe oder Stärke
 - Strich am Ende kurz halten: wird zur geraden Linie, zum Rechteck oder zur Ellipse (Form-Werkzeug begradigt immer)
 - Textmarker liegt unter Schrift und Tinte
+- Wegkritzeln radiert, was darunter geschrieben steht
+- Lineal: mit einem Finger verschieben, mit zwei drehen (rastet bei 0°, 45°, 90° ein); Striche an der Kante werden gerade
+- Zoom-Fenster: groß schreiben, klein auf der Seite; rückt am rechten Rand weiter, springt in die nächste Zeile und auf die nächste Seite
 - Radierer in drei Größen: ganze Striche, teilweise oder nur Textmarker
-- Lasso: verschieben, Größe ändern (Eckgriff), drehen (Kreisgriff), kopieren, ausschneiden, einfügen, duplizieren, umfärben, löschen
+- Lasso: verschieben, Größe ändern (Eckgriff), drehen (Kreisgriff, auch Text und Bilder), kopieren, ausschneiden, einfügen, duplizieren, umfärben, löschen
 - Textfelder direkt auf der Seite tippen und bearbeiten
 - Bilder einfügen; ein neues Bild ist gleich ausgewählt
 
@@ -31,7 +34,8 @@ Kladde ist so aufgebaut, dass man von Goodnotes ohne Umgewöhnung weiterarbeiten
 - Lesezeichen und Gliederung
 - Mehrere Notizbücher als Tabs
 - Bibliothek mit Deckblättern, Ordnern, „Zuletzt“, Favoriten und Suche (Titel, Ordner, getippter Text, Gliederung)
-- Papier liniert, kariert, gepunktet, blanko; A4 hoch oder quer
+- Papier liniert, liniert weit, kariert, kariert klein, gepunktet, Cornell, blanko; Papierfarbe weiß, creme oder dunkel; A4 hoch oder quer
+- Deckblätter in sechs Farben oder die erste Seite als Deckblatt
 
 **Import, Export, Sync**
 - Import von Goodnotes-6-Dateien (Handschrift, Formen, Textmarker, getippter Text, Textfelder, PDF-Hintergründe), auch viele auf einmal oder als ZIP mit Ordnern; PDFs werden zu Notizbüchern
@@ -81,7 +85,6 @@ GOODNOTES_SAMPLES=test-samples npm test   # zusätzlich eigene .goodnotes-Dateie
 
 Ehrlich gesagt deckt Kladde nicht alles ab, was Goodnotes 6 kann:
 
-- **Nicht vorhanden:** KI-Funktionen (Goodnotes nutzt dafür eigene Cloud-Modelle), Handschrifterkennung und Suche in Handschrift, Live-Zusammenarbeit, Marketplace, Audioaufnahmen, Sticker, Präsentationsmodus, Lineal, Zoom-Lupe, Deckblatt-Auswahl, verschiedene Stiftarten (Füller, Kugelschreiber, Pinsel).
-- **Lasso:** Textfelder drehen nicht mit, sie verschieben sich nur mit der Auswahl.
+- **Nicht vorhanden:** KI-Funktionen (Goodnotes nutzt dafür eigene Cloud-Modelle), Handschrifterkennung und Suche in Handschrift, Live-Zusammenarbeit, Marketplace, Audioaufnahmen, Sticker, Präsentationsmodus mit externem Bildschirm, Deckblatt-Bilder und Papiervorlagen aus einem Marketplace.
 - **Goodnotes-Import:** Formatwechsel innerhalb eines Absatzes werden vereinfacht, Zeilenumbrüche können leicht abweichen; Bilder und andere Elementarten waren in den Beispieldateien nicht enthalten und werden noch nicht übernommen. Es gibt keinen Export zurück ins Goodnotes-Format.
 - **Sync:** gleichzeitige Bearbeitung derselben Seite auf zwei Geräten wird nicht zusammengeführt; die zuletzt geänderte Fassung gewinnt.

@@ -11,6 +11,7 @@ import {
   recolorSelection,
   rotateSelection,
   scaleSelection,
+  scribbleTargets,
   selectionBounds,
   type Box,
   type Clip,
@@ -19,7 +20,7 @@ import {
 import { importGoodnotes } from "./goodnotes/import";
 import { icons, type IconName } from "./icons";
 import { drawPenSegments, drawStroke, renderPage, textHeight } from "./ink";
-import { newId, newNotebook, PAGE_HEIGHT, PAGE_WIDTH, pageAttachments, visiblePages, type Notebook, type Page, type Point, type Stroke, type Template, type TextBox, type Tool } from "./model";
+import { newId, newNotebook, PAGE_HEIGHT, PAGE_WIDTH, pageAttachments, visiblePages, type Notebook, type Page, type Point, type Stroke, type PaperColor, type PenType, type Template, type TextBox, type Tool } from "./model";
 import { duplicatePage, insertPage, insertPageAt, movePage, pageLike } from "./pages";
 import { pdfPageSizes, renderPdfPage } from "./pdf";
 import { writePdf } from "./pdfwrite";
@@ -193,6 +194,7 @@ function changed(p?: Page, redraw = true): void {
   scheduleSync();
   if (redraw && p) renderSheetOf(p);
   if (p) thumbs.delete(p.id);
+  if (zoomWin && (!p || zoomWin.page === p) && !zoomStroke) renderZoom();
   // Refresh the page thumbnails once writing pauses.
   clearTimeout(sidebarTimer);
   if (!$("sidebar").hidden) sidebarTimer = setTimeout(() => !gesture && renderSidebar(), 900);
@@ -348,8 +350,11 @@ function folderTile(path: string, name: string): HTMLElement {
 
 function notebookTile(nb: Notebook): HTMLElement {
   const first = visiblePages(nb)[0];
-  const cover = h("div", { class: "cover" });
-  if (first) void thumbnail(first, 300).then((url) => cover.replaceChildren(h("img", { src: url, alt: "" })));
+  const cover = h("div", { class: "cover" + (nb.cover ? " colored" : "") });
+  if (nb.cover) {
+    cover.style.background = nb.cover;
+    cover.append(h("span", {}, nb.title));
+  } else if (first) void thumbnail(first, 300).then((url) => cover.replaceChildren(h("img", { src: url, alt: "" })));
   const more = iconButton("more", "Optionen", (event) => showMenu(event.currentTarget as HTMLElement, notebookMenu(nb)));
   const tile = h(
     "div",
@@ -373,11 +378,20 @@ function notebookMenu(nb: Notebook): MenuItem[] {
     { label: "Öffnen", action: () => openNotebook(nb) },
     { label: nb.favorite ? "Aus Favoriten entfernen" : "Zu Favoriten", action: () => saveNotebook(nb, () => (nb.favorite = !nb.favorite || undefined)) },
     { label: "Umbenennen", action: () => renameNotebook(nb) },
+    { label: "Deckblatt …", action: () => chooseCover(nb) },
     { label: "In Ordner verschieben …", action: () => moveNotebookPrompt(nb) },
     { label: "Duplizieren", action: () => duplicateNotebook(nb) },
     { separator: true },
     { label: "Löschen", danger: true, action: () => deleteNotebook(nb) },
   ];
+}
+
+const COVERS = ["#2f4b7c", "#3d7a5a", "#a8483b", "#c7922f", "#6c4f8c", "#3a3f46"];
+function chooseCover(nb: Notebook): void {
+  showMenu({ x: innerWidth / 2 - 120, y: 140 }, [
+    { label: "Erste Seite als Deckblatt", checked: !nb.cover, action: () => saveNotebook(nb, () => (nb.cover = undefined)) },
+    ...COVERS.map((color) => ({ node: colorRow(color, () => saveNotebook(nb, () => (nb.cover = color))) })),
+  ]);
 }
 
 function saveNotebook(nb: Notebook, change: () => void): void {
@@ -483,6 +497,9 @@ function newNotebookDialog(): void {
     const nb = newNotebook(String(data.get("title")).trim() || "Neues Notizbuch");
     const first = nb.pages[0];
     first.template = data.get("template") as Template;
+    const paper = data.get("paper") as PaperColor;
+    if (paper !== "white") first.paper = paper;
+    nb.cover = String(data.get("cover") ?? "") || undefined;
     if (data.get("format") === "landscape") Object.assign(first, { width: PAGE_HEIGHT, height: PAGE_WIDTH });
     nb.folder = libSection === "all" ? libFolder || undefined : undefined;
     notebooks.push(nb);
@@ -494,6 +511,7 @@ function newNotebookDialog(): void {
 
 function showLibrary(): void {
   finishTextEdit();
+  if (zoomWin) closeZoom();
   $("editor-view").hidden = true;
   $("library-view").hidden = false;
   renderLibrary();
@@ -536,6 +554,8 @@ interface Sheet {
   el: HTMLDivElement;
   canvas: HTMLCanvasElement;
   ctx: CanvasRenderingContext2D;
+  /** Transparent layer for the laser pointer, so the page is not redrawn per frame. */
+  overlay: HTMLCanvasElement;
   live: boolean;
 }
 let sheets: Sheet[] = [];
@@ -551,6 +571,7 @@ const observer = new IntersectionObserver(
       else {
         // Off-screen pages give their bitmap memory back.
         sheet.canvas.width = sheet.canvas.height = 1;
+        sheet.overlay.width = sheet.overlay.height = 1;
       }
     }
   },
@@ -559,6 +580,7 @@ const observer = new IntersectionObserver(
 
 function openNotebook(nb: Notebook): void {
   finishTextEdit();
+  if (zoomWin && zoomWin.page && !nb.pages.includes(zoomWin.page)) closeZoom();
   const switching = current !== nb;
   current = nb;
   if (switching) {
@@ -586,9 +608,10 @@ function buildSheets(): void {
   const pages = current ? visiblePages(current) : [];
   sheets = pages.map((p) => {
     const canvas = h("canvas");
-    const el = h("div", { class: "sheet" }, canvas) as HTMLDivElement;
+    const overlay = h("canvas", { class: "overlay" });
+    const el = h("div", { class: "sheet" }, canvas, overlay) as HTMLDivElement;
     el.style.aspectRatio = `${pageW(p)} / ${pageH(p)}`;
-    return { page: p, el, canvas, ctx: canvas.getContext("2d")!, live: false };
+    return { page: p, el, canvas, overlay, ctx: canvas.getContext("2d")!, live: false };
   });
   const add = h("button", { class: "add-sheet", title: "Seite hinzufügen" }, icon("plus"), "Seite hinzufügen");
   add.onclick = () => addPage(pages[pages.length - 1]);
@@ -694,6 +717,16 @@ function renderSheet(s: Sheet): void {
   renderPage(s.ctx, shown, key ? pdfBitmaps.get(key) : undefined, images);
   if (gesture?.sheet === s) drawOverlay(s);
   if (selected?.page === p) drawSelection(s);
+  if (zoomWin?.page === p) {
+    const r = zoomRegion();
+    s.ctx.save();
+    s.ctx.fillStyle = "#2a6fdb14";
+    s.ctx.strokeStyle = "#2a6fdb";
+    s.ctx.lineWidth = 3;
+    s.ctx.fillRect(r.x, r.y, r.w, r.h);
+    s.ctx.strokeRect(r.x, r.y, r.w, r.h);
+    s.ctx.restore();
+  }
   if (bg && key && !pdfBitmaps.has(key)) {
     renderPdfPage(bg.attachment, () => storage.getAttachment(bg.attachment), bg.page, w).then(
       (bitmap) => {
@@ -834,6 +867,24 @@ function renderContext(): void {
   const bar = $("context");
   const t = presetTool();
   const items: HTMLElement[] = [];
+  if (t === "pen") {
+    const labels: Record<PenType, string> = { fountain: "Füller", ball: "Kugelschreiber", brush: "Pinsel" };
+    const type = h("button", { class: "label", title: "Stiftart" }, `${labels[settings.penType]} ▾`);
+    type.onclick = () =>
+      showMenu(
+        type,
+        (Object.keys(labels) as PenType[]).map((pen) => ({
+          label: labels[pen],
+          checked: settings.penType === pen,
+          action: () => {
+            settings.penType = pen;
+            saveSettingsNow();
+            renderContext();
+          },
+        })),
+      );
+    items.push(type, h("span", { class: "divider" }));
+  }
   if (t) {
     const preset = settings.presets[t];
     preset.colors.forEach((color, i) => {
@@ -903,6 +954,8 @@ function renderContext(): void {
         })),
       );
     items.push(mode);
+  } else if (tool === "laser") {
+    items.push(h("span", { class: "label hint" }, "Zeigt auf etwas, ohne zu schreiben"));
   } else if (tool === "lasso") {
     const paste = h("button", { class: "label", disabled: !clip }, "Einfügen");
     paste.onclick = () => pasteHere();
@@ -931,11 +984,13 @@ window.addEventListener("pencildoubletap", (event) => {
 // Pointer input on the pages
 
 type Gesture =
-  | { kind: "draw"; id: number; type: string; sheet: Sheet; stroke: Stroke; drawn: number; snapped: boolean }
+  | { kind: "draw"; id: number; type: string; sheet: Sheet; stroke: Stroke; drawn: number; snapped: boolean; rulerEdge?: number }
   | { kind: "erase"; id: number; type: string; sheet: Sheet; at?: Point; before: Snapshot; changed: boolean }
   | { kind: "lasso"; id: number; type: string; sheet: Sheet; lasso: Point[] }
   | { kind: "drag" | "resize" | "rotate"; id: number; type: string; sheet: Sheet; last: Point; origin: Point; before: Snapshot; changed: boolean }
-  | { kind: "pan"; id: number; type: string; sheet?: Sheet; last: { x: number; y: number }; start: { x: number; y: number }; track: { x: number; y: number; t: number }[] };
+  | { kind: "pan"; id: number; type: string; sheet?: Sheet; last: { x: number; y: number }; start: { x: number; y: number }; track: { x: number; y: number; t: number }[] }
+  | { kind: "laser"; id: number; type: string; sheet: Sheet }
+  | { kind: "zoombox"; id: number; type: string; sheet: Sheet; last: Point };
 let gesture: Gesture | undefined;
 const touches = new Map<number, { x: number; y: number }>();
 let pinch: { distance: number; zoom: number; mid: { x: number; y: number } } | undefined;
@@ -1082,6 +1137,11 @@ function erase(g: Extract<Gesture, { kind: "erase" }>, at: Point): void {
 
 pagesEl.addEventListener("pointerdown", (event) => {
   if ((event.target as HTMLElement).closest(".sel-menu, .text-editor, .add-sheet")) return;
+  if (event.pointerType === "touch" && ruler && (rulerTouches.size > 0 || onRuler(client(event)))) {
+    rulerTouches.set(event.pointerId, client(event));
+    pagesEl.setPointerCapture(event.pointerId);
+    return;
+  }
   const s = sheetAt(event);
   if (event.pointerType === "pen") {
     if (!penSeen) {
@@ -1117,7 +1177,21 @@ pagesEl.addEventListener("pointerdown", (event) => {
     gesture = { ...base, kind: "pan", sheet: s, last: at, start: at, track: [{ ...at, t: event.timeStamp }] };
     return;
   }
-  const at = pointIn(s, event);
+  if (zoomWin?.page === s.page) {
+    const r = zoomRegion();
+    const q = pointIn(s, event);
+    if (q.x >= r.x && q.x <= r.x + r.w && q.y >= r.y && q.y <= r.y + r.h && tool !== "lasso") {
+      gesture = { ...base, kind: "zoombox", sheet: s, last: q };
+      return;
+    }
+  }
+  if (tool === "laser") {
+    gesture = { ...base, kind: "laser", sheet: s };
+    addLaserPoint(s, pointIn(s, event));
+    return;
+  }
+  const edge = (tool === "pen" || tool === "highlighter" || tool === "shape") && ruler ? rulerEdgeNear(client(event)) : undefined;
+  const at = pointIn(s, edge === undefined ? event : onRulerEdge(event, edge));
   if (tool === "text") {
     // Text boxes open on release, so a scroll that starts on the page still scrolls.
     const pos = client(event);
@@ -1153,7 +1227,15 @@ pagesEl.addEventListener("pointerdown", (event) => {
     sheet: s,
     snapped: false,
     drawn: 0,
-    stroke: { id: newId(), tool: tool === "highlighter" ? "highlighter" : "pen", color: currentColor(t), width: currentWidth(t), points: [at] },
+    rulerEdge: edge,
+    stroke: {
+      id: newId(),
+      tool: tool === "highlighter" ? "highlighter" : "pen",
+      color: currentColor(t),
+      width: currentWidth(t),
+      points: [at],
+      pen: tool === "pen" ? settings.penType : tool === "shape" ? "ball" : undefined,
+    },
   };
   holdAnchor = undefined;
   armHold(at);
@@ -1164,6 +1246,7 @@ pagesEl.addEventListener("pointermove", (event) => {
     touches.set(event.pointerId, client(event));
     tapMove(event);
   }
+  if (rulerTouches.has(event.pointerId)) return moveRuler(event);
   if (pinch) return updatePinch();
   const g = gesture;
   if (!g || event.pointerId !== g.id) return;
@@ -1176,7 +1259,18 @@ pagesEl.addEventListener("pointermove", (event) => {
     return;
   }
   const events = event.getCoalescedEvents?.() ?? [event];
-  const points = (events.length ? events : [event]).map((e) => pointIn(g.sheet, e));
+  const edge = g.kind === "draw" ? g.rulerEdge : undefined;
+  const points = (events.length ? events : [event]).map((e) => pointIn(g.sheet, edge === undefined ? e : onRulerEdge(e, edge)));
+  if (g.kind === "laser") return points.forEach((q) => addLaserPoint(g.sheet, q));
+  if (g.kind === "zoombox" && zoomWin) {
+    const q = points[points.length - 1];
+    zoomWin.x += q.x - g.last.x;
+    zoomWin.y += q.y - g.last.y;
+    clampZoom();
+    g.last = q;
+    renderSheet(g.sheet);
+    return renderZoom();
+  }
   const at = points[points.length - 1];
   if (g.kind === "erase") return points.forEach((q) => erase(g, q));
   if (g.kind === "lasso") {
@@ -1213,6 +1307,10 @@ pagesEl.addEventListener("pointermove", (event) => {
 });
 
 const finish = (event: PointerEvent) => {
+  if (rulerTouches.delete(event.pointerId)) {
+    rulerFrom = undefined;
+    return;
+  }
   touches.delete(event.pointerId);
   tapUp(event);
   if (pinch && touches.size < 2) {
@@ -1237,6 +1335,7 @@ const finish = (event: PointerEvent) => {
     return;
   }
   const p = g.sheet.page;
+  if (g.kind === "laser" || g.kind === "zoombox") return;
   if (g.kind === "erase" || g.kind === "drag" || g.kind === "resize" || g.kind === "rotate") {
     if (g.changed) {
       pushUndo(g.before);
@@ -1249,13 +1348,17 @@ const finish = (event: PointerEvent) => {
   } else if (g.kind === "draw") {
     // Busy frames can deliver few move events; the release point completes the stroke.
     if (event.type === "pointerup" && !g.snapped) {
-      const end = pointIn(g.sheet, event);
+      const end = pointIn(g.sheet, g.rulerEdge === undefined ? event : onRulerEdge(event, g.rulerEdge));
       const last = g.stroke.points[g.stroke.points.length - 1];
       if (end.x !== last.x || end.y !== last.y) g.stroke.points.push({ ...end, p: last.p });
     }
     if (tool === "shape" && !g.snapped) g.stroke.points = recognizeShape(g.stroke.points) ?? g.stroke.points;
+    const scribbled = tool === "pen" && settings.scribbleErase && !g.snapped && g.rulerEdge === undefined ? scribbleTargets(g.stroke.points, p.strokes) : undefined;
     checkpoint(p);
-    p.strokes.push(g.stroke);
+    if (scribbled) {
+      p.strokes = p.strokes.filter((x) => !scribbled.includes(x.id));
+      toast("Weggekritzelt", 900);
+    } else p.strokes.push(g.stroke);
     changed(p, false);
   }
   renderSheet(g.sheet);
@@ -1301,6 +1404,333 @@ function startInertia(track: { x: number; y: number; t: number }[]): void {
 function snapHorizontal(): void {
   if (settings.scroll === "horizontal" && zoom <= 1.01) scrollToPage(pageIndex, true);
 }
+
+// ---------------------------------------------------------------------------
+// Laser pointer: a fading trail on the sheet's overlay, never saved
+
+const laserTrails = new Map<Sheet, { x: number; y: number; t: number }[]>();
+let laserFrame = 0;
+function addLaserPoint(s: Sheet, q: Point): void {
+  const trail = laserTrails.get(s) ?? [];
+  trail.push({ x: q.x, y: q.y, t: performance.now() });
+  laserTrails.set(s, trail);
+  if (!laserFrame) laserFrame = requestAnimationFrame(drawLasers);
+}
+function drawLasers(now: number): void {
+  laserFrame = 0;
+  for (const [s, trail] of laserTrails) {
+    const o = s.overlay;
+    if (o.width !== s.canvas.width || o.height !== s.canvas.height) [o.width, o.height] = [s.canvas.width, s.canvas.height];
+    const ctx = o.getContext("2d")!;
+    ctx.clearRect(0, 0, o.width, o.height);
+    const holding = gesture?.kind === "laser" && gesture.sheet === s;
+    const alive = trail.filter((q) => now - q.t < 650);
+    if (holding && !alive.length && trail.length) alive.push(trail[trail.length - 1]);
+    laserTrails.set(s, alive);
+    if (!alive.length) {
+      laserTrails.delete(s);
+      continue;
+    }
+    ctx.lineCap = ctx.lineJoin = "round";
+    ctx.shadowColor = "#ff2d2d";
+    ctx.shadowBlur = 18;
+    for (let i = 1; i < alive.length; i++) {
+      ctx.globalAlpha = Math.max(0, 1 - (now - alive[i].t) / 650);
+      ctx.strokeStyle = "#ff3b30";
+      ctx.lineWidth = 9;
+      ctx.beginPath();
+      ctx.moveTo(alive[i - 1].x, alive[i - 1].y);
+      ctx.lineTo(alive[i].x, alive[i].y);
+      ctx.stroke();
+    }
+    const head = alive[alive.length - 1];
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = "#ff3b30";
+    ctx.beginPath();
+    ctx.arc(head.x, head.y, 9, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  if (laserTrails.size) laserFrame = requestAnimationFrame(drawLasers);
+}
+
+// ---------------------------------------------------------------------------
+// Ruler: moved with one finger, turned with two; strokes started near an edge follow it
+
+const rulerEl = $("ruler");
+const RULER_HALF_LENGTH = 700;
+const RULER_HALF_HEIGHT = 42;
+let ruler: { x: number; y: number; angle: number } | undefined;
+const rulerTouches = new Map<number, { x: number; y: number }>();
+let rulerFrom: Map<number, { x: number; y: number }> | undefined;
+
+function placeRuler(): void {
+  if (!ruler) return;
+  rulerEl.style.transform = `translate(${ruler.x}px, ${ruler.y}px) rotate(${ruler.angle}rad)`;
+  const deg = Math.round(((((ruler.angle * 180) / Math.PI) % 180) + 180) % 180);
+  $("ruler-angle").textContent = `${deg > 90 ? 180 - deg : deg}°`;
+}
+/** Ruler centre in client coordinates and its unit axes. */
+function rulerFrame() {
+  const ws = $("workspace").getBoundingClientRect();
+  const r = ruler!;
+  return { cx: ws.left + r.x, cy: ws.top + r.y, ux: Math.cos(r.angle), uy: Math.sin(r.angle), nx: -Math.sin(r.angle), ny: Math.cos(r.angle) };
+}
+function onRuler(q: { x: number; y: number }): boolean {
+  const f = rulerFrame();
+  const dx = q.x - f.cx;
+  const dy = q.y - f.cy;
+  return Math.abs(dx * f.ux + dy * f.uy) <= RULER_HALF_LENGTH && Math.abs(dx * f.nx + dy * f.ny) <= RULER_HALF_HEIGHT;
+}
+/** The signed edge offset a stroke starting at q should follow, if it starts close to an edge. */
+function rulerEdgeNear(q: { x: number; y: number }): number | undefined {
+  const f = rulerFrame();
+  const dx = q.x - f.cx;
+  const dy = q.y - f.cy;
+  if (Math.abs(dx * f.ux + dy * f.uy) > RULER_HALF_LENGTH) return undefined;
+  const across = dx * f.nx + dy * f.ny;
+  if (Math.abs(Math.abs(across) - RULER_HALF_HEIGHT) > 36) return undefined;
+  return Math.sign(across || 1) * RULER_HALF_HEIGHT;
+}
+/** Projects a pointer position onto the ruler edge. */
+function onRulerEdge<E extends { clientX: number; clientY: number; pointerType?: string; pressure?: number }>(event: E, edge: number) {
+  const f = rulerFrame();
+  const dx = event.clientX - f.cx;
+  const dy = event.clientY - f.cy;
+  const along = dx * f.ux + dy * f.uy;
+  return { clientX: f.cx + along * f.ux + edge * f.nx, clientY: f.cy + along * f.uy + edge * f.ny, pointerType: event.pointerType, pressure: event.pressure };
+}
+function moveRuler(event: PointerEvent): void {
+  if (!ruler) return;
+  const before = rulerFrom ?? new Map(rulerTouches);
+  rulerTouches.set(event.pointerId, client(event));
+  const ids = [...rulerTouches.keys()].filter((id) => before.has(id));
+  if (ids.length === 1) {
+    const [id] = ids;
+    ruler.x += rulerTouches.get(id)!.x - before.get(id)!.x;
+    ruler.y += rulerTouches.get(id)!.y - before.get(id)!.y;
+  } else if (ids.length >= 2) {
+    const [a, b] = ids;
+    const a0 = before.get(a)!;
+    const b0 = before.get(b)!;
+    const a1 = rulerTouches.get(a)!;
+    const b1 = rulerTouches.get(b)!;
+    ruler.angle += Math.atan2(b1.y - a1.y, b1.x - a1.x) - Math.atan2(b0.y - a0.y, b0.x - a0.x);
+    ruler.x += (a1.x + b1.x - a0.x - b0.x) / 2;
+    ruler.y += (a1.y + b1.y - a0.y - b0.y) / 2;
+  }
+  rulerFrom = new Map(rulerTouches);
+  // Rest on 0°, 45° and 90° while the fingers are near them.
+  const step = Math.PI / 4;
+  const snapped = Math.round(ruler.angle / step) * step;
+  const shown = Math.abs(snapped - ruler.angle) < (2.5 * Math.PI) / 180 ? snapped : ruler.angle;
+  const keep = ruler.angle;
+  ruler.angle = shown;
+  placeRuler();
+  ruler.angle = keep;
+}
+$("toggle-ruler").onclick = () => {
+  if (ruler) ruler = undefined;
+  else {
+    const ws = $("workspace").getBoundingClientRect();
+    const st = stage.getBoundingClientRect();
+    ruler = { x: st.left - ws.left + st.width / 2, y: st.top - ws.top + st.height * 0.45, angle: 0 };
+  }
+  rulerEl.hidden = !ruler;
+  $("toggle-ruler").classList.toggle("active", !!ruler);
+  placeRuler();
+  if (ruler) toast("Lineal: mit einem Finger verschieben, mit zwei drehen", 2500);
+};
+
+// ---------------------------------------------------------------------------
+// Zoom window: write large in the panel, the ink lands small on the page
+
+let zoomWin: { page: Page; x: number; y: number } | undefined;
+const zoomCanvas = $<HTMLCanvasElement>("zoom-canvas");
+const zctx = zoomCanvas.getContext("2d")!;
+let zoomStroke: { id: number; type: string; stroke?: Stroke; erase?: { before: Snapshot; changed: boolean }; pan?: { x: number; y: number } } | undefined;
+
+function zoomRegion(): { x: number; y: number; w: number; h: number } {
+  const p = zoomWin!.page;
+  const w = pageW(p) / settings.zoomWindow;
+  const h = (w * Math.max(1, zoomCanvas.clientHeight)) / Math.max(1, zoomCanvas.clientWidth);
+  return { x: zoomWin!.x, y: zoomWin!.y, w, h };
+}
+function clampZoom(): void {
+  if (!zoomWin) return;
+  const r = zoomRegion();
+  zoomWin.x = Math.max(0, Math.min(pageW(zoomWin.page) - r.w, zoomWin.x));
+  zoomWin.y = Math.max(0, Math.min(pageH(zoomWin.page) - r.h, zoomWin.y));
+}
+function renderZoom(): void {
+  if (!zoomWin) return;
+  const dpr = window.devicePixelRatio || 1;
+  const cw = Math.round(zoomCanvas.clientWidth * dpr);
+  const ch = Math.round(zoomCanvas.clientHeight * dpr);
+  if (zoomCanvas.width !== cw || zoomCanvas.height !== ch) [zoomCanvas.width, zoomCanvas.height] = [cw, ch];
+  const r = zoomRegion();
+  const scale = cw / r.w;
+  const p = zoomWin.page;
+  const bg = p.background;
+  zctx.setTransform(1, 0, 0, 1, 0, 0);
+  zctx.clearRect(0, 0, cw, ch);
+  zctx.setTransform(scale, 0, 0, scale, -r.x * scale, -r.y * scale);
+  renderPage(zctx, p, bg ? pdfBitmaps.get(`${bg.attachment}:${bg.page}:${Math.round(pageW(p))}`) : undefined, images);
+  if (zoomStroke?.stroke) drawStroke(zctx, zoomStroke.stroke);
+  // The right fifth advances the window when the pen lifts there.
+  zctx.setTransform(1, 0, 0, 1, 0, 0);
+  zctx.fillStyle = "#2a6fdb12";
+  zctx.fillRect(cw * 0.8, 0, cw * 0.2, ch);
+  zctx.fillStyle = "#2a6fdb55";
+  zctx.fillRect(cw * 0.8, 0, 2 * dpr, ch);
+}
+function zoomPoint(event: { clientX: number; clientY: number; pointerType?: string; pressure?: number }): Point {
+  const rect = zoomCanvas.getBoundingClientRect();
+  const r = zoomRegion();
+  return {
+    x: r.x + ((event.clientX - rect.left) / rect.width) * r.w,
+    y: r.y + ((event.clientY - rect.top) / rect.height) * r.h,
+    p: event.pointerType === "mouse" || !event.pressure ? 0.5 : event.pressure,
+  };
+}
+function zoomStep(dx: number, newline = false): void {
+  if (!zoomWin || !current) return;
+  const r = zoomRegion();
+  const p = zoomWin.page;
+  const margin = pageW(p) * (p.template === "cornell" ? 0.29 : 0.05);
+  if (newline || zoomWin.x + dx + r.w > pageW(p) + 1) {
+    if (dx < 0) zoomWin.x = Math.max(0, zoomWin.x + dx);
+    else {
+      zoomWin.x = margin;
+      zoomWin.y += r.h * 0.85;
+      if (zoomWin.y + r.h > pageH(p)) {
+        // Continue on the next page, adding one like the current at the end.
+        const pages = visiblePages(current);
+        let next = pages[pages.indexOf(p) + 1];
+        if (!next) {
+          next = pageLike(p);
+          insertPage(current, next, p);
+          changed();
+          buildSheets();
+        }
+        zoomWin = { page: next, x: margin, y: pageH(next) * 0.08 };
+        scrollToPage(visiblePages(current).indexOf(next), true);
+      }
+    }
+  } else zoomWin.x += dx;
+  clampZoom();
+  renderSheetOf(p);
+  renderSheetOf(zoomWin.page);
+  renderZoom();
+}
+function openZoom(): void {
+  const p = page();
+  if (!p) return;
+  const s = sheetOf(p)!;
+  const rect = s.el.getBoundingClientRect();
+  const st = stage.getBoundingClientRect();
+  // Start at the top of the visible part of the current page.
+  const top = Math.max(0, ((st.top - rect.top) / rect.height) * pageH(p));
+  zoomWin = { page: p, x: pageW(p) * (p.template === "cornell" ? 0.29 : 0.05), y: top + pageH(p) * 0.05 };
+  $("zoom-panel").hidden = false;
+  $<HTMLInputElement>("zoom-factor").value = String(settings.zoomWindow);
+  $("toggle-zoom").classList.add("active");
+  layoutSheets();
+  clampZoom();
+  renderSheet(s);
+  renderZoom();
+}
+function closeZoom(): void {
+  const p = zoomWin?.page;
+  zoomWin = undefined;
+  $("zoom-panel").hidden = true;
+  $("toggle-zoom").classList.remove("active");
+  layoutSheets();
+  if (p) renderSheetOf(p);
+}
+$("toggle-zoom").onclick = () => (zoomWin ? closeZoom() : openZoom());
+$("zoom-close").onclick = closeZoom;
+$("zoom-next").onclick = () => zoomWin && zoomStep(zoomRegion().w * 0.6);
+$("zoom-prev").onclick = () => zoomWin && zoomStep(-zoomRegion().w * 0.6);
+$("zoom-newline").onclick = () => zoomStep(0, true);
+$<HTMLInputElement>("zoom-factor").oninput = (event) => {
+  settings.zoomWindow = Number((event.target as HTMLInputElement).value);
+  saveSettingsNow();
+  clampZoom();
+  if (zoomWin) renderSheetOf(zoomWin.page);
+  renderZoom();
+};
+
+zoomCanvas.addEventListener("pointerdown", (event) => {
+  if (!zoomWin || zoomStroke) return;
+  if (event.pointerType === "pen" && !penSeen) penSeen = true;
+  zoomCanvas.setPointerCapture(event.pointerId);
+  const base = { id: event.pointerId, type: event.pointerType };
+  const p = zoomWin.page;
+  if (event.pointerType === "touch" && fingersScroll()) {
+    zoomStroke = { ...base, pan: client(event) };
+    return;
+  }
+  const at = zoomPoint(event);
+  if (tool === "eraser") {
+    zoomStroke = { ...base, erase: { before: snapshotOf(p), changed: false } };
+    const next = eraseAt(p.strokes, at, eraserRadius() / 2, settings.eraser.mode, newId);
+    if (next) [p.strokes, zoomStroke.erase!.changed] = [next, true];
+    return renderZoom();
+  }
+  if (tool !== "pen" && tool !== "highlighter" && tool !== "shape") return toast("Im Zoom-Fenster: Stift, Marker, Formen oder Radierer");
+  const t = presetTool() ?? "pen";
+  zoomStroke = {
+    ...base,
+    stroke: { id: newId(), tool: tool === "highlighter" ? "highlighter" : "pen", color: currentColor(t), width: currentWidth(t), points: [at], pen: tool === "pen" ? settings.penType : "ball" },
+  };
+  renderZoom();
+});
+zoomCanvas.addEventListener("pointermove", (event) => {
+  const z = zoomStroke;
+  if (!z || z.id !== event.pointerId || !zoomWin) return;
+  if (z.pan) {
+    const now = client(event);
+    const r = zoomRegion();
+    const rect = zoomCanvas.getBoundingClientRect();
+    zoomWin.x -= ((now.x - z.pan.x) / rect.width) * r.w;
+    zoomWin.y -= ((now.y - z.pan.y) / rect.height) * r.h;
+    z.pan = now;
+    clampZoom();
+    renderSheetOf(zoomWin.page);
+    return renderZoom();
+  }
+  const points = (event.getCoalescedEvents?.() ?? [event]).map(zoomPoint);
+  if (z.erase) {
+    const p = zoomWin.page;
+    for (const q of points) {
+      const next = eraseAt(p.strokes, q, eraserRadius() / 2, settings.eraser.mode, newId);
+      if (next) [p.strokes, z.erase.changed] = [next, true];
+    }
+    return renderZoom();
+  }
+  z.stroke?.points.push(...points);
+  renderZoom();
+});
+const zoomFinish = (event: PointerEvent) => {
+  const z = zoomStroke;
+  if (!z || z.id !== event.pointerId || !zoomWin) return;
+  zoomStroke = undefined;
+  const p = zoomWin.page;
+  if (z.erase?.changed) {
+    pushUndo(z.erase.before);
+    changed(p);
+  } else if (z.stroke && event.type === "pointerup") {
+    if (tool === "shape") z.stroke.points = recognizeShape(z.stroke.points) ?? z.stroke.points;
+    checkpoint(p);
+    p.strokes.push(z.stroke);
+    changed(p);
+    const r = zoomRegion();
+    if (Math.max(...z.stroke.points.map((q) => q.x)) > r.x + r.w * 0.8) return zoomStep(r.w * 0.6);
+  }
+  renderZoom();
+};
+zoomCanvas.addEventListener("pointerup", zoomFinish);
+zoomCanvas.addEventListener("pointercancel", zoomFinish);
 
 // ---------------------------------------------------------------------------
 // Text boxes, edited in place
@@ -1513,9 +1943,17 @@ function pageMenu(p: Page): MenuItem[] {
   const i = pages.indexOf(p);
   const templates: [Template, string][] = [
     ["lined", "Liniert"],
+    ["wide", "Liniert weit"],
     ["grid", "Kariert"],
+    ["smallgrid", "Kariert klein"],
     ["dotted", "Gepunktet"],
+    ["cornell", "Cornell"],
     ["blank", "Blanko"],
+  ];
+  const papers: [PaperColor, string][] = [
+    ["white", "Weiß"],
+    ["cream", "Creme"],
+    ["dark", "Dunkel"],
   ];
   return [
     { label: "Neue Seite davor", action: () => addPageAt(i, p) },
@@ -1528,6 +1966,14 @@ function pageMenu(p: Page): MenuItem[] {
     { label: p.title ? "Gliederungseintrag ändern …" : "Zur Gliederung hinzufügen …", action: () => setOutlineTitle(p) },
     { separator: true },
     ...templates.map(([value, label]) => ({ label: `Papier: ${label}`, checked: p.template === value, action: () => setTemplate(p, value) })),
+    ...papers.map(([value, label]) => ({
+      label: `Papierfarbe: ${label}`,
+      checked: (p.paper ?? "white") === value,
+      action: () => {
+        p.paper = value === "white" ? undefined : value;
+        changed(p);
+      },
+    })),
     { separator: true },
     { label: "Seite löschen", danger: true, action: () => deletePage(p) },
   ];
@@ -1612,7 +2058,19 @@ $("toggle-sidebar").onclick = () => {
 
 $("back").onclick = showLibrary;
 $("bookmark").onclick = () => toggleBookmark();
-$("add-page").onclick = () => addPage();
+$("add-page").onclick = (event) => {
+  const p = page();
+  if (!current || !p) return;
+  const pages = visiblePages(current);
+  showMenu(event.currentTarget as HTMLElement, [
+    { label: "Neue Seite danach", action: () => addPage(p) },
+    { label: "Neue Seite davor", action: () => addPageAt(pageIndex, p) },
+    { label: "Neue Seite am Ende", action: () => addPage(pages[pages.length - 1]) },
+    { separator: true },
+    { label: "Bild einfügen", action: () => $("insert-image").click() },
+    { label: "Dokumente importieren …", action: () => $("import-file").click() },
+  ]);
+};
 $("more").onclick = (event) => {
   const p = page();
   if (!current || !p) return;
@@ -1822,6 +2280,7 @@ function openSettings(): void {
   for (const name of ["penOnly", "doubleTap", "scroll"] as const) field(name).value = settings[name];
   (field("tapUndo") as HTMLInputElement).checked = settings.tapUndo;
   (field("holdToShape") as HTMLInputElement).checked = settings.holdToShape;
+  (field("scribbleErase") as HTMLInputElement).checked = settings.scribbleErase;
   const account = loadAccount();
   for (const name of ["server", "user", "appPassword", "folder"] as const) field(name).value = account?.[name] ?? (name === "folder" ? "Kladde" : "");
   settingsDialog.showModal();
@@ -1835,6 +2294,7 @@ settingsDialog.addEventListener("close", () => {
   settings.doubleTap = data.get("doubleTap") as typeof settings.doubleTap;
   settings.tapUndo = data.get("tapUndo") === "on";
   settings.holdToShape = data.get("holdToShape") === "on";
+  settings.scribbleErase = data.get("scribbleErase") === "on";
   saveSettingsNow();
   if (scroll !== settings.scroll) setScroll(scroll);
   const account = { server: String(data.get("server")).trim(), user: String(data.get("user")).trim(), appPassword: String(data.get("appPassword")), folder: String(data.get("folder")).trim() || "Kladde" };
@@ -1940,6 +2400,8 @@ window.addEventListener("resize", () => {
     layoutSheets();
     scrollToPage(index);
     renderSelectionMenu();
+    clampZoom();
+    renderZoom();
   });
 });
 stage.addEventListener(
@@ -1974,6 +2436,15 @@ stage.addEventListener(
   },
   settings,
   undoDepth: () => undoStack.length,
+  get zoomWin() {
+    return zoomWin;
+  },
+  get ruler() {
+    return ruler;
+  },
+  get gesture() {
+    return gesture && { kind: gesture.kind, rulerEdge: (gesture as { rulerEdge?: number }).rulerEdge };
+  },
 };
 
 void (async () => {

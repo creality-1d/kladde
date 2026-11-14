@@ -7,6 +7,7 @@ export function pageLike(like: Page | undefined, now = Date.now()): Page {
   const page = newPage(like?.template ?? "lined", now);
   if (like?.width) page.width = like.width;
   if (like?.height) page.height = like.height;
+  if (like?.paper) page.paper = like.paper;
   return page;
 }
 

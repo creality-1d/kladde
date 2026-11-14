@@ -1,6 +1,7 @@
 // Per-device preferences. They stay on the device and are not synced, like the
 // tool and gesture settings of most note apps.
 import type { EraserMode } from "./edit";
+import type { PenType } from "./model";
 
 export type PresetTool = "pen" | "highlighter" | "shape" | "text";
 
@@ -14,6 +15,11 @@ export interface ToolPreset {
 export interface Settings {
   presets: Record<PresetTool, ToolPreset>;
   eraser: { mode: EraserMode; sizes: [number, number, number]; size: number };
+  penType: PenType;
+  /** Scribbling over ink with the pen erases it. */
+  scribbleErase: boolean;
+  /** Magnification of the zoom window relative to the page width. */
+  zoomWindow: number;
   /** "auto": fingers draw until a stylus is used. "pen": only a stylus draws. "finger": fingers always draw. */
   penOnly: "auto" | "pen" | "finger";
   scroll: "vertical" | "horizontal";
@@ -37,7 +43,10 @@ export const DEFAULTS: Settings = {
     shape: { colors: ["#1d2733", "#1f5fbf", "#c0392b"], widths: [2, 3, 6], color: 0, width: 1 },
     text: { colors: ["#1d2733", "#1f5fbf", "#c0392b"], widths: [2, 3, 5], color: 0, width: 1 },
   },
-  eraser: { mode: "stroke", sizes: [8, 16, 32], size: 1 },
+  eraser: { mode: "stroke", sizes: [10, 20, 40], size: 1 },
+  penType: "fountain",
+  scribbleErase: true,
+  zoomWindow: 2.5,
   penOnly: "auto",
   scroll: "vertical",
   tapUndo: true,

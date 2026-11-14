@@ -208,7 +208,7 @@ export function segmentDistance(p: { x: number; y: number }, a: { x: number; y: 
   return Math.hypot(p.x - (a.x + t * dx), p.y - (a.y + t * dy));
 }
 
-/** Rotates the selection by `angle` radians around `origin`. Texts keep their orientation and move with their centre. */
+/** Rotates the selection by `angle` radians around `origin`; texts and images turn around their own centres. */
 export function rotateSelection(page: Page, selection: Selection, origin: { x: number; y: number }, angle: number, textHeight: (id: string) => number): void {
   const cos = Math.cos(angle);
   const sin = Math.sin(angle);
@@ -218,7 +218,7 @@ export function rotateSelection(page: Page, selection: Selection, origin: { x: n
     if (!selection.texts.has(t.id)) continue;
     const h = textHeight(t.id);
     const c = turn(t.x + t.width / 2, t.y + h / 2);
-    Object.assign(t, { x: c.x - t.width / 2, y: c.y - h / 2 });
+    Object.assign(t, { x: c.x - t.width / 2, y: c.y - h / 2, rotation: (t.rotation ?? 0) + angle });
   }
   for (const i of page.images ?? []) {
     if (!selection.images.has(i.id)) continue;
@@ -268,4 +268,41 @@ export function pasteClip(page: Page, clip: Clip, dx: number, dy: number, newId:
     selection.images.add(i.id);
   }
   return selection;
+}
+
+/**
+ * Scribble to erase: a quick zig-zag over existing ink. Returns the ids of the
+ * strokes it covers, or undefined when the stroke is not a scribble.
+ */
+export function scribbleTargets(scribble: readonly Point[], strokes: readonly Stroke[]): string[] | undefined {
+  if (scribble.length < 12) return undefined;
+  // Count direction reversals along the main axis of the scribble.
+  const xs = scribble.map((p) => p.x);
+  const ys = scribble.map((p) => p.y);
+  const w = Math.max(...xs) - Math.min(...xs);
+  const h = Math.max(...ys) - Math.min(...ys);
+  const axis = w >= h ? xs : ys;
+  const span = Math.max(w, h);
+  if (span < 20) return undefined;
+  let reversals = 0;
+  let dir = 0;
+  let anchor = axis[0];
+  for (const v of axis) {
+    const d = v - anchor;
+    if (Math.abs(d) < span * 0.15) continue;
+    const s = Math.sign(d);
+    if (dir && s !== dir) reversals++;
+    dir = s;
+    anchor = v;
+  }
+  if (reversals < 4 || pathLength(scribble) < span * 3) return undefined;
+  const box = { x: Math.min(...xs) - 6, y: Math.min(...ys) - 6, width: w + 12, height: h + 12 };
+  const inBox = (p: Point) => p.x >= box.x && p.x <= box.x + box.width && p.y >= box.y && p.y <= box.y + box.height;
+  // A stroke goes when most of it lies under the scribble and the scribble actually crosses it.
+  const hits = strokes.filter(
+    (s) =>
+      s.points.filter(inBox).length >= s.points.length * 0.6 &&
+      s.points.some((q) => scribble.some((p, i) => segmentDistance(q, scribble[i - 1] ?? p, p) <= s.width + 8)),
+  );
+  return hits.length ? hits.map((s) => s.id) : undefined;
 }

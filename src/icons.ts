@@ -27,6 +27,12 @@ export const icons = {
   close: svg('<path d="M6 6l12 12M18 6L6 18"/>'),
   docs: svg('<path d="M6 3.5h8l4 4v13H6z"/><path d="M14 3.5v4h4"/>'),
   clock: svg('<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/>'),
+  laser: svg('<circle cx="17" cy="7" r="2.6" fill="currentColor"/><path d="M14.8 9.2L4 20" stroke-dasharray="2 2.4"/>'),
+  ruler: svg('<rect x="2.5" y="8" width="19" height="8" rx="1" transform="rotate(-30 12 12)"/><path d="M7.2 11.6l1 1.7M10 10l1.3 2.2M12.7 8.4l1 1.7M15.5 6.8l1.3 2.2" />'),
+  zoomwin: svg('<rect x="3.5" y="4" width="17" height="16" rx="1.5"/><path d="M3.5 13.5h17"/><rect x="7" y="6.5" width="5" height="4" rx=".5"/>'),
+  next: svg('<path d="M9 5l7 7-7 7"/>'),
+  prev: svg('<path d="M15 5l-7 7 7 7"/>'),
+  newline: svg('<path d="M19 6v6a2 2 0 0 1-2 2H6"/><path d="M9 10.5L5.5 14 9 17.5"/>'),
   search: svg('<circle cx="11" cy="11" r="6"/><path d="M20 20l-4.5-4.5"/>'),
 };
 

@@ -1,7 +1,8 @@
 import { zipSync } from "fflate";
 import { describe, expect, it } from "vitest";
 import { expandImport, joinFolder, notebookFromPdf } from "./bundle";
-import { copySelection, eraseAt, pasteClip, recolorSelection, rotateSelection } from "./edit";
+import { copySelection, eraseAt, pasteClip, recolorSelection, rotateSelection, scribbleTargets } from "./edit";
+import { penFactor } from "./ink";
 import { newNotebook, newPage, PAGE_WIDTH, visiblePages, type Point, type Stroke } from "./model";
 import { duplicatePage, insertPage, insertPageAt, movePage, pageLike } from "./pages";
 import { writePdf } from "./pdfwrite";
@@ -170,5 +171,28 @@ describe("settings", () => {
     expect(s.presets.pen.colors).toEqual(DEFAULTS.presets.pen.colors);
     expect(s.tapUndo).toBe(true);
     expect(withDefaults(undefined)).toEqual(DEFAULTS);
+  });
+});
+
+describe("scribble to erase", () => {
+  const word = stroke("w", Array.from({ length: 20 }, (_, i) => pt(100 + i * 5, 100 + (i % 2) * 6)));
+  const other = stroke("o", [pt(400, 100), pt(450, 100)]);
+  const zigzag = Array.from({ length: 16 }, (_, i) => pt(i % 2 ? 200 : 95, 96 + i * 0.8));
+
+  it("erases the ink under a zig-zag", () => {
+    expect(scribbleTargets(zigzag, [word, other])).toEqual(["w"]);
+  });
+
+  it("ignores ordinary writing and scribbles over empty paper", () => {
+    const writing = Array.from({ length: 30 }, (_, i) => pt(100 + i * 4, 100 + Math.sin(i) * 10));
+    expect(scribbleTargets(writing, [word])).toBeUndefined();
+    expect(scribbleTargets(zigzag.map((q) => ({ ...q, y: q.y + 300 })), [word])).toBeUndefined();
+  });
+});
+
+describe("pen types", () => {
+  it("ball pen ignores pressure, brush reacts strongly", () => {
+    expect(penFactor("ball", 0.1)).toBe(penFactor("ball", 1));
+    expect(penFactor("brush", 1) / penFactor("brush", 0.1)).toBeGreaterThan(penFactor("fountain", 1) / penFactor("fountain", 0.1));
   });
 });
