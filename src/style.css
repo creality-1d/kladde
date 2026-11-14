@@ -255,3 +255,8 @@ dialog .row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
 #rec-list .rec-actions button.danger { color: var(--danger); }
 #rec-panel .search-row { display: flex; align-items: center; gap: 6px; }
 #page-label { cursor: pointer; }
+
+/* Holds the scroll area while a pinch scales the pages with a transform. */
+#pinch-spacer { position: absolute; left: 0; top: 0; pointer-events: none; visibility: hidden; }
+#pinch-spacer[hidden] { display: none; }
+#stage { overflow-anchor: none; overscroll-behavior: none; }

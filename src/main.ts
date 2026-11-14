@@ -1065,12 +1065,18 @@ type Gesture =
   | { kind: "erase"; id: number; type: string; sheet: Sheet; at?: Point; before: Snapshot; changed: boolean }
   | { kind: "lasso"; id: number; type: string; sheet: Sheet; lasso: Point[] }
   | { kind: "drag" | "resize" | "rotate"; id: number; type: string; sheet: Sheet; last: Point; origin: Point; before: Snapshot; changed: boolean }
-  | { kind: "pan"; id: number; type: string; sheet?: Sheet; last: { x: number; y: number }; start: { x: number; y: number }; track: { x: number; y: number; t: number }[] }
+  | { kind: "pan"; id: number; type: string; sheet?: Sheet; last: { x: number; y: number }; start: { x: number; y: number }; scroll: { left: number; top: number }; track: { x: number; y: number; t: number }[] }
   | { kind: "laser"; id: number; type: string; sheet: Sheet }
   | { kind: "zoombox"; id: number; type: string; sheet: Sheet; last: Point };
 let gesture: Gesture | undefined;
 const touches = new Map<number, { x: number; y: number }>();
-let pinch: { distance: number; zoom: number; mid: { x: number; y: number } } | undefined;
+/**
+ * A pinch only scales the pages with a CSS transform while the fingers move;
+ * the real zoom (layout and sharp rendering) is applied once when it ends.
+ */
+let pinch:
+  | { distance: number; zoom: number; mid: { x: number; y: number }; origin: { x: number; y: number }; anchor?: ZoomAnchor; scale: number; at: { x: number; y: number } }
+  | undefined;
 const PEN_KEY = "kladde.penSeen";
 let penSeen = (() => {
   try {
@@ -1148,34 +1154,91 @@ function cancelGesture(): void {
   renderSelectionMenu();
 }
 
+const MIN_ZOOM = 0.5;
+const MAX_ZOOM = 5;
+const clampZoomLevel = (z: number) => Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, z));
+
+/** A point on a page, so zooming can keep it under the fingers however gaps and centring change. */
+interface ZoomAnchor {
+  index: number;
+  fx: number;
+  fy: number;
+}
+function zoomAnchor(at: { x: number; y: number }): ZoomAnchor | undefined {
+  let best: ZoomAnchor | undefined;
+  let bestDistance = Infinity;
+  sheets.forEach((s, index) => {
+    if (!s.el.isConnected) return;
+    const r = s.el.getBoundingClientRect();
+    const dx = Math.max(r.left - at.x, 0, at.x - r.right);
+    const dy = Math.max(r.top - at.y, 0, at.y - r.bottom);
+    const distance = Math.hypot(dx, dy);
+    if (distance < bestDistance) {
+      bestDistance = distance;
+      best = { index, fx: (at.x - r.left) / r.width, fy: (at.y - r.top) / r.height };
+    }
+  });
+  return best;
+}
+/** Scrolls so the anchored page point sits at `at` (client coordinates). */
+function keepAnchor(anchor: ZoomAnchor | undefined, at: { x: number; y: number }): void {
+  const s = anchor && sheets[anchor.index];
+  if (!s) return;
+  const r = s.el.getBoundingClientRect();
+  stage.scrollLeft += r.left + anchor.fx * r.width - at.x;
+  stage.scrollTop += r.top + anchor.fy * r.height - at.y;
+}
+
 function startPinch(): void {
   const [a, b] = [...touches.values()];
-  pinch = { distance: Math.max(1, Math.hypot(a.x - b.x, a.y - b.y)), zoom, mid: { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 } };
+  const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+  stopInertia();
+  // Keep the scrollable area as it is while the transform shrinks the pages.
+  const spacer = $("pinch-spacer");
+  spacer.style.width = `${stage.scrollWidth}px`;
+  spacer.style.height = `${stage.scrollHeight}px`;
+  spacer.hidden = false;
+  const r = pagesEl.getBoundingClientRect();
+  pinch = { distance: Math.max(1, Math.hypot(a.x - b.x, a.y - b.y)), zoom, mid, origin: { x: mid.x - r.left, y: mid.y - r.top }, anchor: zoomAnchor(mid), scale: 1, at: mid };
+  pagesEl.style.transformOrigin = "0 0";
+  pagesEl.style.willChange = "transform";
 }
 function updatePinch(): void {
   if (!pinch || touches.size < 2) return;
   const [a, b] = [...touches.values()];
   const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
-  setZoom(pinch.zoom * (Math.hypot(a.x - b.x, a.y - b.y) / pinch.distance), mid, false);
-  // Two fingers moving together pan the view.
-  stage.scrollBy(pinch.mid.x - mid.x, pinch.mid.y - mid.y);
-  pinch.mid = mid;
+  const scale = clampZoomLevel(pinch.zoom * (Math.hypot(a.x - b.x, a.y - b.y) / pinch.distance)) / pinch.zoom;
+  // The page point that was under the fingers follows their midpoint (zoom and pan together).
+  const tx = mid.x - pinch.mid.x + pinch.origin.x * (1 - scale);
+  const ty = mid.y - pinch.mid.y + pinch.origin.y * (1 - scale);
+  pagesEl.style.transform = `translate(${tx}px, ${ty}px) scale(${scale})`;
+  pinch.scale = scale;
+  pinch.at = mid;
+}
+/** Applies the pinched zoom for real: one layout, one sharp render. */
+function endPinch(): void {
+  const p = pinch;
+  if (!p) return;
+  pinch = undefined;
+  pagesEl.style.transform = "";
+  pagesEl.style.willChange = "";
+  zoom = clampZoomLevel(p.zoom * p.scale);
+  layoutSheets();
+  keepAnchor(p.anchor, p.at);
+  $("pinch-spacer").hidden = true;
+  renderSelectionMenu();
 }
 
-/** Sets the zoom and keeps the content point under `anchor` (client coordinates) in place. */
-function setZoom(value: number, anchor?: { x: number; y: number }, announce = true): void {
-  const next = Math.min(5, Math.max(0.5, value));
+/** Sets the zoom and keeps the page point under `at` (client coordinates) in place. */
+function setZoom(value: number, at?: { x: number; y: number }, announce = true): void {
+  const next = clampZoomLevel(value);
   if (next === zoom) return;
   const rect = stage.getBoundingClientRect();
-  const ax = (anchor?.x ?? rect.left + rect.width / 2) - rect.left;
-  const ay = (anchor?.y ?? rect.top + rect.height / 2) - rect.top;
-  const cx = stage.scrollLeft + ax;
-  const cy = stage.scrollTop + ay;
-  const ratio = next / zoom;
+  const point = at ?? { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+  const anchor = zoomAnchor(point);
   zoom = next;
   layoutSheets();
-  stage.scrollLeft = cx * ratio - ax;
-  stage.scrollTop = cy * ratio - ay;
+  keepAnchor(anchor, point);
   if (announce) toast(`${Math.round(zoom * 100)} %`, 700);
   renderSelectionMenu();
 }
@@ -1231,7 +1294,7 @@ pagesEl.addEventListener("pointerdown", (event) => {
     }
     // The palm often lands before the pen; the pen takes over.
     if (gesture?.type === "touch") cancelGesture();
-    pinch = undefined;
+    endPinch();
   }
   if (event.pointerType === "touch") {
     touches.set(event.pointerId, client(event));
@@ -1251,7 +1314,7 @@ pagesEl.addEventListener("pointerdown", (event) => {
   const base = { id: event.pointerId, type: event.pointerType };
   if ((event.pointerType === "touch" && fingersScroll()) || !s) {
     const at = client(event);
-    gesture = { ...base, kind: "pan", sheet: s, last: at, start: at, track: [{ ...at, t: event.timeStamp }] };
+    gesture = { ...base, kind: "pan", sheet: s, last: at, start: at, scroll: { left: stage.scrollLeft, top: stage.scrollTop }, track: [{ ...at, t: event.timeStamp }] };
     return;
   }
   if (zoomWin?.page === s.page) {
@@ -1272,7 +1335,7 @@ pagesEl.addEventListener("pointerdown", (event) => {
   if (tool === "text") {
     // Text boxes open on release, so a scroll that starts on the page still scrolls.
     const pos = client(event);
-    gesture = { ...base, kind: "pan", sheet: s, last: pos, start: pos, track: [{ ...pos, t: event.timeStamp }] };
+    gesture = { ...base, kind: "pan", sheet: s, last: pos, start: pos, scroll: { left: stage.scrollLeft, top: stage.scrollTop }, track: [{ ...pos, t: event.timeStamp }] };
     return;
   }
   if (tool === "eraser") {
@@ -1329,10 +1392,12 @@ pagesEl.addEventListener("pointermove", (event) => {
   if (!g || event.pointerId !== g.id) return;
   if (g.kind === "pan") {
     const now = client(event);
-    stage.scrollBy(g.last.x - now.x, g.last.y - now.y);
+    // Absolute from the start: per-move deltas would each be rounded to
+    // device pixels and add up to scrolling faster than the finger.
+    stage.scrollTo(g.scroll.left + g.start.x - now.x, g.scroll.top + g.start.y - now.y);
     g.last = now;
     g.track.push({ ...now, t: event.timeStamp });
-    if (g.track.length > 8) g.track.shift();
+    if (g.track.length > 12) g.track.shift();
     return;
   }
   const events = event.getCoalescedEvents?.() ?? [event];
@@ -1390,10 +1455,7 @@ const finish = (event: PointerEvent) => {
   }
   touches.delete(event.pointerId);
   tapUp(event);
-  if (pinch && touches.size < 2) {
-    pinch = undefined;
-    renderSelectionMenu();
-  }
+  if (pinch && touches.size < 2) endPinch();
   const g = gesture;
   if (!g || event.pointerId !== g.id) return;
   gesture = undefined;
@@ -1408,7 +1470,7 @@ const finish = (event: PointerEvent) => {
         renderSelectionMenu();
       }
     }
-    if (moved) startInertia(g.track);
+    if (moved) startInertia(g.track, event.timeStamp);
     return;
   }
   const p = g.sheet.page;
@@ -1450,18 +1512,34 @@ function stopInertia(): void {
   cancelAnimationFrame(inertiaFrame);
   inertiaFrame = 0;
 }
-function startInertia(track: { x: number; y: number; t: number }[]): void {
-  const a = track[0];
+const MAX_FLING = 5; // px per ms
+function startInertia(track: { x: number; y: number; t: number }[], releasedAt: number): void {
   const b = track[track.length - 1];
+  // Only the movement just before lifting counts: a finger that stopped (no
+  // move events while it rests) and then lifts must not fling the page.
+  const recent = track.filter((q) => b.t - q.t <= 80);
+  const a = recent[0];
   const dt = b.t - a.t;
-  if (dt <= 0 || dt > 200) return snapHorizontal();
+  if (dt < 8 || releasedAt - b.t > 50) return snapHorizontal();
   let vx = (a.x - b.x) / dt;
   let vy = (a.y - b.y) / dt;
+  const speed = Math.hypot(vx, vy);
+  // Slow, careful scrolling stops where the finger left it.
+  if (speed < 0.25) return snapHorizontal();
+  if (speed > MAX_FLING) {
+    vx *= MAX_FLING / speed;
+    vy *= MAX_FLING / speed;
+  }
   let last = performance.now();
+  // Track the position as a float for the same reason as in panning.
+  let left = stage.scrollLeft;
+  let top = stage.scrollTop;
   const step = (now: number) => {
     const ms = now - last;
     last = now;
-    stage.scrollBy(vx * ms, vy * ms);
+    left += vx * ms;
+    top += vy * ms;
+    stage.scrollTo(left, top);
     const decay = Math.pow(0.995, ms);
     vx *= decay;
     vy *= decay;
