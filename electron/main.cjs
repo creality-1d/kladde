@@ -44,6 +44,26 @@ function createWindow() {
     void shell.openExternal(url);
     return { action: "deny" };
   });
+  // Edits are written to IndexedDB shortly after writing pauses; let the
+  // page finish that before the window goes away.
+  let flushed = false;
+  window.on("close", (event) => {
+    if (flushed) return;
+    event.preventDefault();
+    const done = () => {
+      if (flushed || window.isDestroyed()) return;
+      flushed = true;
+      window.close();
+    };
+    const timeout = setTimeout(done, 3000);
+    window.webContents
+      .executeJavaScript("window.kladde && window.kladde.storage.flush().then(() => 1)")
+      .catch(() => {})
+      .finally(() => {
+        clearTimeout(timeout);
+        done();
+      });
+  });
   void window.loadURL("app://kladde/index.html");
 }
 

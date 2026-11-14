@@ -2545,7 +2545,8 @@ window.addEventListener("pagehide", () => void storage.flush());
 window.addEventListener("beforeunload", (event) => {
   if (!storage.unsaved) return;
   void storage.flush();
-  event.preventDefault();
+  // Browsers ask before leaving; the app shells would silently refuse to close instead.
+  if (!("Capacitor" in window) && !navigator.userAgent.includes("Electron")) event.preventDefault();
 });
 storage.onError(
   (error) => {
