@@ -72,6 +72,7 @@
         <div class="group" id="context"></div>
       </nav>
       <div id="workspace">
+        <div id="page-badge" hidden></div>
         <aside id="sidebar" hidden>
           <div class="segmented">
             <button data-pane="pages" class="active">Seiten</button>
@@ -168,6 +169,23 @@
           <label class="check"><input type="checkbox" name="tapUndo" /> Mit zwei Fingern tippen: rückgängig, mit drei: wiederholen</label>
           <label class="check"><input type="checkbox" name="holdToShape" /> Am Strichende kurz halten: Form begradigen</label>
           <label class="check"><input type="checkbox" name="scribbleErase" /> Wegkritzeln radiert, was darunter liegt</label>
+        </fieldset>
+        <fieldset>
+          <legend>Werkzeugleiste und Anzeige</legend>
+          <label>Werkzeugposition
+            <select name="toolbarAt">
+              <option value="top">Oben</option>
+              <option value="bottom">Unten</option>
+            </select>
+          </label>
+          <label>Rückgängig und Wiederholen
+            <select name="undoAt">
+              <option value="left">Links</option>
+              <option value="right">Rechts</option>
+            </select>
+          </label>
+          <label class="check"><input type="checkbox" name="pageNumber" /> Seitenzahl beim Blättern anzeigen</label>
+          <p class="hint">Tastenkürzel: P Stift, E Radierer, H Textmarker, S Formen, L Lasso, T Text, K Laserpointer, R Lineal, I Bild, Strg/⌘ + und − zoomen.</p>
         </fieldset>
         <fieldset>
           <legend>Datensicherung</legend>

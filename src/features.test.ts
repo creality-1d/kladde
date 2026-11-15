@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { createBackup, isBackup, restoreBackup } from "./backup";
 import { expandImport, joinFolder, notebookFromPdf } from "./bundle";
 import { copySelection, eraseAt, pasteClip, recolorSelection, rotateSelection, scribbleTargets } from "./edit";
-import { penFactor } from "./ink";
+import { dashPattern, isClosed, penFactor, pencilAlpha } from "./ink";
 import { kindOf, mergeNotebook, newNotebook, newPage, newTextDocument, newWhiteboard, notebookAttachments, PAGE_WIDTH, visiblePages, type Point, type Stroke } from "./model";
 import { duplicatePage, growWhiteboard, insertPage, insertPageAt, movePage, pageLike } from "./pages";
 import { writePdf } from "./pdfwrite";
@@ -197,6 +197,31 @@ describe("pen types", () => {
   it("ball pen ignores pressure, brush reacts strongly", () => {
     expect(penFactor("ball", 0.1)).toBe(penFactor("ball", 1));
     expect(penFactor("brush", 1) / penFactor("brush", 0.1)).toBeGreaterThan(penFactor("fountain", 1) / penFactor("fountain", 0.1));
+  });
+  it("pencil gets darker and a little wider with pressure", () => {
+    expect(pencilAlpha(1)).toBeGreaterThan(pencilAlpha(0.1));
+    expect(pencilAlpha(1)).toBeLessThan(1);
+    expect(penFactor("pencil", 1)).toBeGreaterThan(penFactor("pencil", 0.1));
+  });
+  it("dotted lines use dots, dashed lines dashes, scaled by width", () => {
+    expect(dashPattern("dotted", 4)[0]).toBe(0);
+    expect(dashPattern("dashed", 4)[0]).toBeGreaterThan(dashPattern("dashed", 2)[0]);
+  });
+  it("only closed shapes count as fillable", () => {
+    const square = [pt(0, 0), pt(100, 0), pt(100, 100), pt(0, 100), pt(0, 0)];
+    expect(isClosed(square)).toBe(true);
+    expect(isClosed(square.slice(0, 4))).toBe(false);
+    expect(isClosed([pt(0, 0), pt(100, 0)])).toBe(false);
+  });
+});
+
+describe("Goodnotes-style settings", () => {
+  it("adds new options to settings from older versions", () => {
+    const s = withDefaults({ penType: "brush", dash: { pen: "dotted" } } as never);
+    expect(s.dash).toEqual({ pen: "dotted", shape: "solid" });
+    expect(s.penTuning.pencil).toEqual(DEFAULTS.penTuning.pencil);
+    expect(s.toolbarAt).toBe("top");
+    expect(s.lassoShape).toBe("free");
   });
 });
 

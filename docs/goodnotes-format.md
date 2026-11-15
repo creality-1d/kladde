@@ -19,6 +19,14 @@ not listed are unknown.
 The editor, file format code and sync logic are served by Goodnotes' web app,
 so the archive format was analysed directly.
 
+- iOS Goodnotes 6.5.20 (IPA) is native Swift with the document core
+  (`GoodNotesCore`) linked into the main binary. Its strings show the event-sourced
+  aggregates behind newer element kinds (`AudioNoteAggregate` with `attachmentID`,
+  `durationFlicks`, `references`; `EmbeddedAudioAggregate`; `CommentThreadAggregate`;
+  `ClippingSourceAggregate`), but no protobuf field names or numbers: those exist only
+  in compiled code. The app's UI strings (`*.lproj/*.strings`) were used as a feature
+  checklist for `goodnotes-vergleich.md`. No code, images or texts from the app are used.
+
 ## Container
 
 A ZIP archive:

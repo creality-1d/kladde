@@ -23,7 +23,7 @@ import {
 import { importGoodnotes } from "./goodnotes/import";
 import { icons, type IconName } from "./icons";
 import { drawPenSegments, drawStroke, renderPage, textHeight } from "./ink";
-import { kindOf, newId, newNotebook, newTextDocument, newWhiteboard, PAGE_HEIGHT, PAGE_WIDTH, pageAttachments, visiblePages, type Notebook, type Page, type Point, type Stroke, type PaperColor, type PenType, type Template, type TextBox, type Tool, type Recording } from "./model";
+import { kindOf, newId, newNotebook, newTextDocument, newWhiteboard, PAGE_HEIGHT, PAGE_WIDTH, pageAttachments, visiblePages, type Notebook, type Page, type Point, type Stroke, type PaperColor, type PenType, type Dash, type Template, type TextBox, type Tool, type Recording } from "./model";
 import { duplicatePage, growWhiteboard, insertPage, insertPageAt, movePage, pageLike } from "./pages";
 import { plainText, renderTextPages, sanitizeHtml } from "./textdoc";
 import { pdfPageSizes, pdfPageText, renderPdfPage } from "./pdf";
@@ -795,9 +795,35 @@ stage.addEventListener("scroll", () => {
   });
 });
 
+let badgeIndex = -1;
+let badgeTimer: ReturnType<typeof setTimeout> | undefined;
+/** "Seitenzahl anzeigen": the page number shows on the page briefly when another page comes into view. */
+function showPageBadge(): void {
+  const badge = $("page-badge");
+  if (!settings.pageNumber || sheets.length < 2 || badgeIndex === pageIndex) {
+    badgeIndex = pageIndex;
+    return;
+  }
+  const first = badgeIndex === -1;
+  badgeIndex = pageIndex;
+  if (first) return;
+  badge.textContent = `Seite ${pageIndex + 1} von ${sheets.length}`;
+  badge.hidden = false;
+  clearTimeout(badgeTimer);
+  badgeTimer = setTimeout(() => (badge.hidden = true), 1200);
+}
+/** Toolbar at the top or bottom, undo buttons left or right. */
+function applyLayout(): void {
+  const view = $("editor-view");
+  view.dataset.toolbar = settings.toolbarAt;
+  view.dataset.undo = settings.undoAt;
+}
+applyLayout();
+
 function updatePageUi(): void {
   const p = page();
   $("page-label").textContent = sheets.length ? `${pageIndex + 1} / ${sheets.length}` : "";
+  showPageBadge();
   const bookmark = $("bookmark");
   bookmark.innerHTML = p?.bookmark ? icons.bookmarkOn : icons.bookmark;
   bookmark.classList.toggle("active", !!p?.bookmark);
@@ -1029,6 +1055,16 @@ function colorRow(color: string, run: () => void): HTMLElement {
 // ---------------------------------------------------------------------------
 // Tools and the context bar (colours, sizes, eraser modes)
 
+const PEN_LABELS: Record<PenType, string> = { fountain: "Füller", ball: "Kugelschreiber", brush: "Pinsel", pencil: "Bleistift" };
+const DASH_LABELS: Record<Dash, string> = { solid: "Durchgezogen", dashed: "Gestrichelt", dotted: "Gepunktet" };
+/** Pen type, line pattern and fill of a new stroke for the current tool. */
+function strokeStyle(): Pick<Stroke, "pen" | "dash" | "fill"> {
+  const style: Pick<Stroke, "pen" | "dash" | "fill"> = { pen: tool === "pen" ? settings.penType : tool === "shape" ? "ball" : undefined };
+  const dash = tool === "pen" ? settings.dash.pen : tool === "shape" ? settings.dash.shape : "solid";
+  if (dash !== "solid") style.dash = dash;
+  if (tool === "shape" && settings.shapeFill) style.fill = currentColor("shape");
+  return style;
+}
 const presetTool = (): PresetTool | undefined => (tool === "pen" || tool === "highlighter" || tool === "shape" || tool === "text" ? tool : undefined);
 const currentColor = (t: PresetTool = presetTool() ?? "pen") => settings.presets[t].colors[settings.presets[t].color];
 const currentWidth = (t: PresetTool = presetTool() ?? "pen") => settings.presets[t].widths[settings.presets[t].width];
@@ -1069,7 +1105,7 @@ function renderContext(): void {
   const t = presetTool();
   const items: HTMLElement[] = [];
   if (t === "pen") {
-    const labels: Record<PenType, string> = { fountain: "Füller", ball: "Kugelschreiber", brush: "Pinsel" };
+    const labels: Record<PenType, string> = PEN_LABELS;
     const type = h("button", { class: "label", title: "Stiftart" }, `${labels[settings.penType]} ▾`);
     type.onclick = () =>
       showMenu(
@@ -1160,7 +1196,22 @@ function renderContext(): void {
   } else if (tool === "lasso") {
     const paste = h("button", { class: "label", disabled: !clip }, "Einfügen");
     paste.onclick = () => pasteHere();
-    items.push(h("span", { class: "label hint" }, selected ? "Ziehen: verschieben · Ecke: Größe · Kreis: drehen" : "Umkreisen zum Auswählen"), paste);
+    const shape = h("button", { class: "label", title: "Auswahlform" }, `${settings.lassoShape === "rect" ? "Rechteckig" : "Freihand"} ▾`);
+    shape.onclick = () =>
+      showMenu(
+        shape,
+        ([["free", "Freihand-Auswahl"], ["rect", "Rechteckige Auswahl"]] as const).map(([value, label]) => ({
+          label,
+          checked: settings.lassoShape === value,
+          action: () => {
+            settings.lassoShape = value;
+            saveSettingsNow();
+            renderContext();
+          },
+        })),
+      );
+    const hint = selected ? "Ziehen: verschieben · Ecke: Größe · Kreis: drehen" : settings.lassoShape === "rect" ? "Rechteck aufziehen zum Auswählen" : "Umkreisen zum Auswählen";
+    items.push(shape, h("span", { class: "divider" }), h("span", { class: "label hint" }, hint), paste);
   }
   bar.replaceChildren(...items);
 }
@@ -1507,7 +1558,7 @@ pagesEl.addEventListener("pointerdown", (event) => {
       color: currentColor(t),
       width: currentWidth(t),
       points: [tool === "pen" ? { ...at, p: tunePressure(at.p, settings.penTuning[settings.penType].pressure) } : at],
-      pen: tool === "pen" ? settings.penType : tool === "shape" ? "ball" : undefined,
+      ...strokeStyle(),
     },
   };
   holdAnchor = undefined;
@@ -1550,7 +1601,10 @@ pagesEl.addEventListener("pointermove", (event) => {
   const at = points[points.length - 1];
   if (g.kind === "erase") return points.forEach((q) => erase(g, q));
   if (g.kind === "lasso") {
-    g.lasso.push(...points);
+    if (settings.lassoShape === "rect") {
+      const a = g.lasso[0];
+      g.lasso = [a, { ...a, x: at.x }, at, { ...a, y: at.y }, a];
+    } else g.lasso.push(...points);
     return renderSheet(g.sheet);
   }
   const sel = selected;
@@ -1581,7 +1635,7 @@ pagesEl.addEventListener("pointermove", (event) => {
     }
   } else g.stroke.points.push(...points);
   armHold(at);
-  if (g.stroke.tool === "pen") {
+  if (g.stroke.tool === "pen" && !g.stroke.dash) {
     drawPenSegments(g.sheet.ctx, g.stroke, Math.max(1, g.drawn));
     g.drawn = g.stroke.points.length;
   } else {
@@ -1621,6 +1675,11 @@ const finish = (event: PointerEvent) => {
     if (g.changed) {
       pushUndo(g.before);
       changed(p, false);
+    }
+    // "Automatisch abwählen": after erasing, continue with the previous tool.
+    if (g.kind === "erase" && settings.eraserAutoDeselect && tool === "eraser" && previousTool !== "eraser") {
+      renderSheet(g.sheet);
+      return setTool(previousTool);
     }
   } else if (g.kind === "lasso") {
     const selection = g.lasso.length > 2 ? lassoSelect(p, g.lasso, textHeightOf(p)) : undefined;
@@ -2026,7 +2085,7 @@ zoomCanvas.addEventListener("pointerdown", (event) => {
   const t = presetTool() ?? "pen";
   zoomStroke = {
     ...base,
-    stroke: { id: newId(), tool: tool === "highlighter" ? "highlighter" : "pen", color: currentColor(t), width: currentWidth(t), points: [at], pen: tool === "pen" ? settings.penType : "ball" },
+    stroke: { id: newId(), tool: tool === "highlighter" ? "highlighter" : "pen", color: currentColor(t), width: currentWidth(t), points: [at], ...strokeStyle() },
   };
   renderZoom();
 });
@@ -2197,8 +2256,10 @@ function pasteHere(): void {
 
 $("undo").onclick = undo;
 $("redo").onclick = redo;
+/** Hardware keyboard: one key per tool, as listed under "Tastenkürzel" in Goodnotes. */
+const TOOL_KEYS: Record<string, Tool> = { p: "pen", e: "eraser", h: "highlighter", s: "shape", l: "lasso", t: "text", k: "laser" };
 document.addEventListener("keydown", (event) => {
-  if ((event.target as HTMLElement).closest("input, textarea, dialog") || $("editor-view").hidden) return;
+  if ((event.target as HTMLElement).closest("input, textarea, dialog, [contenteditable]") || $("editor-view").hidden) return;
   const mod = event.ctrlKey || event.metaKey;
   const key = event.key.toLowerCase();
   if (mod && key === "z") {
@@ -2214,7 +2275,15 @@ document.addEventListener("keydown", (event) => {
   else if (mod && key === "d") {
     event.preventDefault();
     duplicateSelected();
-  } else if (event.key === "Delete" || event.key === "Backspace") deleteSelected();
+  } else if (mod && (key === "+" || key === "=" || key === "-")) {
+    event.preventDefault();
+    setZoom(zoom * (key === "-" ? 1 / 1.25 : 1.25));
+  } else if (!mod && !event.altKey && TOOL_KEYS[key]) {
+    setTool(TOOL_KEYS[key]);
+    if (!$("tool-panel").hidden) renderToolPanel();
+  } else if (!mod && key === "r") $("toggle-ruler").click();
+  else if (!mod && key === "i") $("insert-image").click();
+  else if (event.key === "Delete" || event.key === "Backspace") deleteSelected();
   else if (event.key === "Escape" && selected) {
     selected = undefined;
     renderAllSheets();
@@ -2692,6 +2761,9 @@ function openSettings(): void {
   const field = (name: string) => form.elements.namedItem(name) as HTMLInputElement | HTMLSelectElement;
   for (const name of ["penOnly", "doubleTap", "scroll"] as const) field(name).value = settings[name];
   (field("tapUndo") as HTMLInputElement).checked = settings.tapUndo;
+  (field("toolbarAt") as HTMLSelectElement).value = settings.toolbarAt;
+  (field("undoAt") as HTMLSelectElement).value = settings.undoAt;
+  (field("pageNumber") as HTMLInputElement).checked = settings.pageNumber;
   (field("holdToShape") as HTMLInputElement).checked = settings.holdToShape;
   (field("scribbleErase") as HTMLInputElement).checked = settings.scribbleErase;
   $("backup-hint").dataset.last = settings.lastBackup ? `Letzte Sicherung: ${formatDate(settings.lastBackup)}` : "Noch keine Sicherung erstellt.";
@@ -2718,6 +2790,10 @@ settingsDialog.addEventListener("close", () => {
   settings.penOnly = data.get("penOnly") as typeof settings.penOnly;
   settings.doubleTap = data.get("doubleTap") as typeof settings.doubleTap;
   settings.tapUndo = data.get("tapUndo") === "on";
+  settings.toolbarAt = data.get("toolbarAt") === "bottom" ? "bottom" : "top";
+  settings.undoAt = data.get("undoAt") === "right" ? "right" : "left";
+  settings.pageNumber = data.get("pageNumber") === "on";
+  applyLayout();
   settings.holdToShape = data.get("holdToShape") === "on";
   settings.scribbleErase = data.get("scribbleErase") === "on";
   saveSettingsNow();
@@ -3076,6 +3152,8 @@ function renderRecordings(): void {
         const at = pages.findIndex((p) => p.id === r.pageId);
         const when = new Date(r.createdAt).toLocaleString("de-DE", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
         const audio = h("audio", { controls: "", preload: "metadata" }) as HTMLAudioElement;
+        audio.defaultPlaybackRate = audio.playbackRate = settings.playbackRate;
+        audio.onloadedmetadata = () => (audio.playbackRate = settings.playbackRate);
         void storage.getAttachment(r.attachment).then((bytes) => {
           if (!bytes) return audio.replaceWith(h("p", { class: "hint" }, "Audio noch nicht synchronisiert."));
           const url = URL.createObjectURL(new Blob([bytes.slice()], { type: r.mime }));
@@ -3088,6 +3166,16 @@ function renderRecordings(): void {
           go.onclick = () => scrollToPage(at, true);
           actions.append(go);
         }
+        const speed = h("button", { title: "Geschwindigkeit der Wiedergabe" }, `${String(settings.playbackRate).replace(".", ",")}×`);
+        speed.onclick = () => {
+          const rates = [0.75, 1, 1.25, 1.5, 2];
+          settings.playbackRate = rates[(rates.indexOf(settings.playbackRate) + 1) % rates.length];
+          saveSettingsNow();
+          document.querySelectorAll<HTMLAudioElement>("#rec-list audio").forEach((a) => (a.playbackRate = settings.playbackRate));
+          document.querySelectorAll<HTMLButtonElement>("#rec-list .rec-speed").forEach((b) => (b.textContent = `${String(settings.playbackRate).replace(".", ",")}×`));
+        };
+        speed.classList.add("rec-speed");
+        actions.append(speed);
         const share = h("button", {}, "Teilen");
         share.onclick = async () => {
           const bytes = await storage.getAttachment(r.attachment);
@@ -3144,25 +3232,38 @@ function slider(label: string, value: number, min: number, max: number, step: nu
   input.onchange = () => saveSettingsNow();
   return h("label", { class: "slider" }, h("span", {}, label, out), input);
 }
+/** A row of mutually exclusive buttons, as in Goodnotes' tool settings. */
+function segmented<T extends string>(labels: Record<T, string>, current: T, choose: (value: T) => void): HTMLElement {
+  const seg = h("div", { class: "segmented" });
+  for (const value of Object.keys(labels) as T[]) {
+    const b = h("button", { class: value === current ? "active" : "" }, labels[value]);
+    b.onclick = () => {
+      choose(value);
+      saveSettingsNow();
+      renderContext();
+      renderToolPanel();
+    };
+    seg.append(b);
+  }
+  return seg;
+}
+function checkRow(label: string, value: boolean, change: (v: boolean) => void): HTMLElement {
+  const box = h("input", { type: "checkbox" }) as HTMLInputElement;
+  box.checked = value;
+  box.onchange = () => {
+    change(box.checked);
+    saveSettingsNow();
+  };
+  return h("label", { class: "check" }, box, label);
+}
 function renderToolPanel(): void {
   if (toolPanel.hidden) return;
   const rows: HTMLElement[] = [];
   const t = presetTool();
   const titles: Partial<Record<Tool, string>> = { pen: "Stift", highlighter: "Textmarker", eraser: "Radierer", shape: "Formen" };
   if (tool === "pen") {
-    const labels: Record<PenType, string> = { fountain: "Füller", ball: "Kugelschreiber", brush: "Pinsel" };
-    const seg = h("div", { class: "segmented" });
-    for (const pen of Object.keys(labels) as PenType[]) {
-      const b = h("button", { class: pen === settings.penType ? "active" : "" }, labels[pen]);
-      b.onclick = () => {
-        settings.penType = pen;
-        saveSettingsNow();
-        renderContext();
-        renderToolPanel();
-      };
-      seg.append(b);
-    }
-    rows.push(seg);
+    rows.push(segmented(PEN_LABELS, settings.penType, (pen) => (settings.penType = pen)));
+    rows.push(h("p", { class: "hint" }, "Strichart"), segmented(DASH_LABELS, settings.dash.pen, (d) => (settings.dash.pen = d)));
   }
   if (t) {
     const preset = settings.presets[t];
@@ -3223,8 +3324,11 @@ function renderToolPanel(): void {
       saveSettingsNow();
     };
     rows.push(h("label", { class: "check" }, scribble, "Wegkritzeln mit dem Stift radiert"));
+    rows.push(checkRow("Automatisch abwählen: nach dem Radieren zurück zum vorigen Werkzeug", settings.eraserAutoDeselect, (v) => (settings.eraserAutoDeselect = v)));
   }
   if (tool === "shape") {
+    rows.push(h("p", { class: "hint" }, "Strichart"), segmented(DASH_LABELS, settings.dash.shape, (d) => (settings.dash.shape = d)));
+    rows.push(checkRow("Farbig ausfüllen (Rechteck, Ellipse)", settings.shapeFill, (v) => (settings.shapeFill = v)));
     const hold = h("input", { type: "checkbox" }) as HTMLInputElement;
     hold.checked = settings.holdToShape;
     hold.onchange = () => {
@@ -3259,7 +3363,7 @@ function drawPenPreview(c: HTMLCanvasElement): void {
   let points = Array.from({ length: 60 }, (_, i) => ({ x: 30 + i * 8.5, y: 60 + Math.sin(i / 4) * 30, p: tunePressure(0.15 + (i / 60) * 0.8, tuning.pressure) }));
   if (settings.penType !== "ball") points = taper(points, tuning.sharpness);
   const preset = settings.presets.pen;
-  drawStroke(ctx, { id: "preview", tool: "pen", color: getComputedStyle(document.body).getPropertyValue("--text").trim() || "#000", width: preset.widths[preset.width] * 2, points, pen: settings.penType });
+  drawStroke(ctx, { id: "preview", tool: "pen", color: getComputedStyle(document.body).getPropertyValue("--text").trim() || "#000", width: preset.widths[preset.width] * 2, points, pen: settings.penType, ...(settings.dash.pen !== "solid" ? { dash: settings.dash.pen } : {}) });
 }
 window.addEventListener("resize", () => !toolPanel.hidden && placeToolPanel());
 

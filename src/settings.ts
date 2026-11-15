@@ -1,7 +1,7 @@
 // Per-device preferences. They stay on the device and are not synced, like the
 // tool and gesture settings of most note apps.
 import type { EraserMode } from "./edit";
-import type { PenType } from "./model";
+import type { Dash, PenType } from "./model";
 import type { PenTuning } from "./pentune";
 
 export type PresetTool = "pen" | "highlighter" | "shape" | "text";
@@ -19,6 +19,22 @@ export interface Settings {
   penType: PenType;
   /** Fine settings per pen type (tip sharpness, pressure sensitivity, stabilisation). */
   penTuning: Record<PenType, PenTuning>;
+  /** Line pattern of new pen and shape strokes. */
+  dash: { pen: Dash; shape: Dash };
+  /** Closed shapes are filled with their colour. */
+  shapeFill: boolean;
+  /** Lasso draws freehand or as a rectangle. */
+  lassoShape: "free" | "rect";
+  /** After erasing, go back to the tool used before the eraser. */
+  eraserAutoDeselect: boolean;
+  /** Toolbar at the top or the bottom of the screen. */
+  toolbarAt: "top" | "bottom";
+  /** Undo and redo buttons at the left or the right end of the toolbar. */
+  undoAt: "left" | "right";
+  /** Shows "page n of m" while scrolling through a document. */
+  pageNumber: boolean;
+  /** Playback speed of audio recordings. */
+  playbackRate: number;
   /** Highlighter strokes become straight lines. */
   highlighterStraight: boolean;
   /** Where the tool settings panel was dragged to (client px), if moved. */
@@ -58,7 +74,16 @@ export const DEFAULTS: Settings = {
     fountain: { sharpness: 50, pressure: 50, stabilization: 20 },
     ball: { sharpness: 0, pressure: 0, stabilization: 20 },
     brush: { sharpness: 60, pressure: 70, stabilization: 20 },
+    pencil: { sharpness: 20, pressure: 60, stabilization: 10 },
   },
+  dash: { pen: "solid", shape: "solid" },
+  shapeFill: false,
+  lassoShape: "free",
+  eraserAutoDeselect: false,
+  toolbarAt: "top",
+  undoAt: "left",
+  pageNumber: true,
+  playbackRate: 1,
   highlighterStraight: false,
   toolPanel: undefined,
   scribbleErase: true,
@@ -86,6 +111,7 @@ export function withDefaults(raw: Partial<Settings> | undefined): Settings {
     if (key === "presets") {
       for (const tool of Object.keys(s.presets) as PresetTool[]) Object.assign(s.presets[tool], raw.presets?.[tool]);
     } else if (key === "eraser") Object.assign(s.eraser, raw.eraser);
+    else if (key === "dash") Object.assign(s.dash, raw.dash);
     else if (key === "penTuning") {
       for (const pen of Object.keys(s.penTuning) as PenType[]) Object.assign(s.penTuning[pen], raw.penTuning?.[pen]);
     }

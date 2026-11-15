@@ -2,7 +2,7 @@
 
 Ziel von Kladde: Wer von Goodnotes kommt, soll ohne Umgewöhnung weiterschreiben können. Übernommen sind deshalb Anordnung und Gesten, nicht die Gestaltung: Icons, Farben und Texte sind eigene.
 
-Stand: Kladde 0.5.0. „Getestet“ heißt, dass der Ablauf in den automatischen Oberflächentests (Electron mit echten Stift-, Finger- und Mauseingaben) oder Unit-Tests geprüft wurde. Die Spalte zu Goodnotes beschreibt Goodnotes 6 auf dem iPad.
+Stand: Kladde 0.5.0 mit den Ergänzungen aus dem Abgleich mit den Oberflächentexten der iPad-App (Goodnotes 6.5.20). „Getestet“ heißt, dass der Ablauf in den automatischen Oberflächentests (Electron mit echten Stift-, Finger- und Mauseingaben) oder Unit-Tests geprüft wurde. Die Spalte zu Goodnotes beschreibt Goodnotes 6 auf dem iPad.
 
 ## Gewohnheiten, die gleich funktionieren
 
@@ -22,7 +22,14 @@ Stand: Kladde 0.5.0. „Getestet“ heißt, dass der Ablauf in den automatischen
 | Radierer: ganze Striche / teilweise / nur Marker | ja | ja, drei Größen | getestet |
 | Textmarker unter der Schrift | ja | ja | – |
 | Lasso: verschieben, Größe, drehen, kopieren, ausschneiden, duplizieren, umfärben, löschen | ja | ja | getestet (Auswahl, Duplizieren); Logik unit-getestet |
-| Stiftarten Füller, Kugelschreiber, Pinsel | ja | ja | getestet |
+| Stiftarten Füller, Kugelschreiber, Pinsel, Bleistift | ja (Bleistift in Härtegraden) | ja, ein Bleistift mit Körnung, Deckkraft folgt dem Druck | getestet |
+| Strichart durchgezogen, gestrichelt, gepunktet (Stift und Formen) | ja | ja | getestet |
+| Formen farbig ausfüllen | ja | ja (Rechteck, Ellipse) | getestet |
+| Lasso: Freihand- oder rechteckige Auswahl | ja | ja | getestet |
+| Radierer „Automatisch abwählen“ | ja | ja, zurück zum vorigen Werkzeug | getestet |
+| Werkzeugposition oben/unten, Rückgängig links/rechts | ja | ja | getestet |
+| Seitenzahl beim Blättern anzeigen | ja | ja, abschaltbar | getestet |
+| Tastenkürzel für Werkzeuge und Zoom | ja | ja (P, E, H, S, L, T, K, R, I, Strg/⌘ +/−) | getestet |
 | Wegkritzeln radiert | ja | ja, abschaltbar | getestet |
 | Lineal (verschieben, drehen, Kante zieht Striche gerade) | ja | ja, rastet bei 0°/45°/90° | getestet |
 | Zoom-Fenster mit Weiterrücken und Zeilenumbruch | ja | ja, Vergrößerung 1,5–5× | getestet |
@@ -38,7 +45,7 @@ Stand: Kladde 0.5.0. „Getestet“ heißt, dass der Ablauf in den automatischen
 | Papierkorb mit Wiederherstellen | ja | ja | getestet |
 | Suche in Handschrift | ja | ja, in der iPad-App (Apple-Texterkennung auf dem Gerät) | Ablauf getestet mit Ersatz-Erkennung; echte Erkennung nur auf dem iPad |
 | Suche in PDF-Text, Treffer auf der Seite markiert | ja | ja | getestet |
-| Audioaufnahme | ja, mit Wiedergabe der Schrift im Takt | ja, ohne mitlaufende Schrift | getestet |
+| Audioaufnahme | ja, mit Wiedergabe der Schrift im Takt, Geschwindigkeit wählbar | ja, Geschwindigkeit 0,75–2×, ohne mitlaufende Schrift | Aufnahme getestet |
 | Zu Seite springen | ja | ja (Seitenzahl antippen) | – |
 | PDF öffnen und beschreiben | ja | ja | getestet |
 | Als PDF teilen | ja | ja (iPad: System-Teilen-Blatt) | getestet (Download); Teilen-Blatt nur auf dem iPad |
@@ -54,7 +61,11 @@ Stand: Kladde 0.5.0. „Getestet“ heißt, dass der Ablauf in den automatischen
 
 ## Was Kladde nicht hat
 
-- KI-Funktionen, Umwandeln von Handschrift in Text
+- KI-Funktionen, Umwandeln von Handschrift in Text, Rechtschreibprüfung und Wortvervollständigung für Handschrift
+- Tape zum Abdecken und Aufdecken (Lernen), Notizzettel und Kommentare
+- Präzisions- und Pixelradierer als eigene Arten (Kladde: ganze Striche, teilweise, nur Textmarker)
+- Gespeicherte Stile (Schnellzugriff) und Bleistift-Härtegrade
+- Links auf Seiten oder Webadressen, Präsentationsmodus, Handballenerkennung mit Schreibhaltung
 - Live-Zusammenarbeit, Marketplace, Sticker
 - Mitlaufende Schrift beim Abspielen von Aufnahmen
 - Deckblatt-Bilder und Vorlagen aus dem Marketplace, Präsentation auf externem Bildschirm

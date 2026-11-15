@@ -56,6 +56,18 @@ export function drawStroke(ctx: CanvasRenderingContext2D, stroke: Stroke): void 
     for (const pt of pts) ctx.lineTo(pt.x, pt.y);
     ctx.stroke();
   } else {
+    if (stroke.fill && pts.length > 2 && isClosed(pts)) {
+      ctx.fillStyle = stroke.fill;
+      ctx.beginPath();
+      pts.forEach((q, i) => (i ? ctx.lineTo(q.x, q.y) : ctx.moveTo(q.x, q.y)));
+      ctx.closePath();
+      ctx.fill();
+    }
+    if (stroke.dash && stroke.dash !== "solid" && pts.length > 1) {
+      drawDashed(ctx, stroke);
+      ctx.restore();
+      return;
+    }
     drawPenSegments(ctx, stroke, 1);
     if (pts.length === 1) {
       ctx.fillStyle = stroke.color;
@@ -71,7 +83,76 @@ export function drawStroke(ctx: CanvasRenderingContext2D, stroke: Stroke): void 
 export function penFactor(pen: PenType | undefined, p: number): number {
   if (pen === "ball") return 0.9;
   if (pen === "brush") return 0.15 + p * p * 2.6;
+  if (pen === "pencil") return 0.7 + p * 0.6;
   return 0.4 + p * 1.2;
+}
+
+/** Graphite coverage of a pencil at pressure p: light pressure leaves a fainter line. */
+export function pencilAlpha(p: number): number {
+  return Math.min(0.95, 0.35 + p * 0.6);
+}
+
+/** True when a shape ends where it started, so it can be filled. */
+export function isClosed(points: readonly Point[]): boolean {
+  if (points.length < 3) return false;
+  const a = points[0];
+  const b = points[points.length - 1];
+  const xs = points.map((q) => q.x);
+  const ys = points.map((q) => q.y);
+  const size = Math.max(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys));
+  return Math.hypot(a.x - b.x, a.y - b.y) <= Math.max(4, size * 0.05);
+}
+
+/** Dash pattern in page units for a line of the given width. */
+export function dashPattern(dash: "dashed" | "dotted", width: number): number[] {
+  // A zero-length dash with round caps draws a dot.
+  return dash === "dotted" ? [0, width * 2.2] : [width * 3.5, width * 2.5];
+}
+
+function drawDashed(ctx: CanvasRenderingContext2D, stroke: Stroke): void {
+  const pts = stroke.points;
+  const avg = pts.reduce((sum, q) => sum + q.p, 0) / pts.length;
+  const width = stroke.width * penFactor(stroke.pen, avg);
+  ctx.lineWidth = width;
+  ctx.setLineDash(dashPattern(stroke.dash as "dashed" | "dotted", width));
+  ctx.beginPath();
+  ctx.moveTo(pts[0].x, pts[0].y);
+  for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
+  if (stroke.fill && isClosed(pts)) ctx.closePath();
+  ctx.stroke();
+}
+
+const grain = new WeakMap<CanvasRenderingContext2D, Map<string, CanvasPattern | string>>();
+/** A grainy fill in the stroke colour that gives pencil lines their paper texture. */
+function pencilStyle(ctx: CanvasRenderingContext2D, color: string): CanvasPattern | string {
+  let cache = grain.get(ctx);
+  if (!cache) grain.set(ctx, (cache = new Map()));
+  const known = cache.get(color);
+  if (known) return known;
+  let style: CanvasPattern | string = color;
+  try {
+    const size = 48;
+    const tile = document.createElement("canvas");
+    tile.width = tile.height = size;
+    const t = tile.getContext("2d");
+    if (t) {
+      t.fillStyle = color;
+      t.fillRect(0, 0, size, size);
+      const img = t.getImageData(0, 0, size, size);
+      // Fixed seed: the texture looks the same every time the page is drawn.
+      let seed = 7;
+      for (let i = 3; i < img.data.length; i += 4) {
+        seed = (seed * 16807) % 2147483647;
+        img.data[i] = 110 + (seed % 146);
+      }
+      t.putImageData(img, 0, 0);
+      style = ctx.createPattern(tile, "repeat") ?? color;
+    }
+  } catch {
+    // Without a canvas (tests) the pencil draws in plain colour.
+  }
+  cache.set(color, style);
+  return style;
 }
 
 /**
@@ -84,11 +165,18 @@ export function drawPenSegments(ctx: CanvasRenderingContext2D, stroke: Stroke, f
   ctx.lineCap = "round";
   ctx.lineJoin = "round";
   ctx.strokeStyle = stroke.color;
+  const pencil = stroke.pen === "pencil";
+  if (pencil) {
+    ctx.strokeStyle = pencilStyle(ctx, stroke.color);
+    // Butt caps keep overlapping segment ends from stacking up graphite.
+    ctx.lineCap = "butt";
+  }
   {
     // Pen width follows pressure; midpoint quadratics smooth the polyline.
     for (let i = Math.max(1, from); i < pts.length; i++) {
       const a = pts[i - 1];
       const b = pts[i];
+      if (pencil) ctx.globalAlpha = pencilAlpha(b.p);
       ctx.lineWidth = stroke.width * penFactor(stroke.pen, b.p);
       ctx.beginPath();
       ctx.moveTo(a.x, a.y);

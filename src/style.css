@@ -319,3 +319,15 @@ dialog .row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
 .tile .kind svg { width: 16px; height: 16px; }
 .cover.textcover { background: #fff; color: #1d2733; padding: 14px; text-align: left; font-size: 11px; line-height: 1.4; overflow: hidden; display: block; }
 .cover.textcover b { display: block; font-size: 14px; margin-bottom: 6px; }
+
+/* Toolbar at the bottom and undo buttons on the right, as in Goodnotes' "Werkzeugposition". */
+#editor-view[data-toolbar="bottom"] #toolbar { order: 10; border-bottom: none; border-top: 1px solid var(--line); padding-bottom: max(4px, env(safe-area-inset-bottom)); }
+#editor-view[data-undo="right"] #toolbar > .group:first-child { order: 3; }
+#editor-view[data-undo="right"] #context { order: 2; }
+#page-badge {
+  position: absolute; left: 50%; bottom: 18px; transform: translateX(-50%); z-index: 30; pointer-events: none;
+  padding: 6px 14px; border-radius: 999px; background: #000a; color: #fff; font-size: 13px;
+}
+#page-badge[hidden] { display: none; }
+/* Messages stay above a toolbar at the bottom. */
+body:has(#editor-view[data-toolbar="bottom"]:not([hidden])) #toast { bottom: calc(max(24px, env(safe-area-inset-bottom)) + 64px); }

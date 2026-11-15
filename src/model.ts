@@ -1,7 +1,9 @@
 export type Tool = "pen" | "highlighter" | "eraser" | "text" | "lasso" | "shape" | "laser";
 export type Template = "blank" | "lined" | "grid" | "dotted" | "smallgrid" | "cornell" | "wide";
 export type PaperColor = "white" | "cream" | "dark";
-export type PenType = "fountain" | "ball" | "brush";
+export type PenType = "fountain" | "ball" | "brush" | "pencil";
+/** Line pattern of pen and shape strokes; solid when missing. */
+export type Dash = "solid" | "dashed" | "dotted";
 
 export interface Point {
   x: number;
@@ -18,6 +20,10 @@ export interface Stroke {
   points: Point[];
   /** Ink style of pen strokes; fountain when missing. */
   pen?: PenType;
+  /** Dashed or dotted line; solid when missing. */
+  dash?: Dash;
+  /** Fill colour of a closed shape. */
+  fill?: string;
 }
 
 export interface TextBox {
